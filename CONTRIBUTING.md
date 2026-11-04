@@ -31,3 +31,5 @@ It does not cover the cross build of the plugin DLLs (`plugin` preset, `scripts/
 ## Editor settings
 
 [.editorconfig](.editorconfig) sets indentation, line endings and final newlines for every file type in the repository, so editors without a clang-format integration write files the way the formatter and the existing files expect. Most editors read it natively; VS Code needs the EditorConfig extension.
+
+In VS Code, [.vscode/tasks.json](.vscode/tasks.json) runs the scripts of step 3 as tasks (`format: check`, `format: fix`, `test`, `lint`) and turns their findings into links in the Problems panel.

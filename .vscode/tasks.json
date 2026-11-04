@@ -1,0 +1,54 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "format: check",
+      "detail": "scripts/format.sh --check: report clang-format violations without changing anything",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/format.sh",
+      "args": ["--check"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "clear": true },
+      "problemMatcher": {
+        "base": "$gcc",
+        "owner": "clang-format",
+        "fileLocation": ["autoDetect", "${workspaceFolder}"]
+      }
+    },
+    {
+      "label": "format: fix",
+      "detail": "scripts/format.sh: format modules/ in place",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/format.sh",
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "test",
+      "detail": "scripts/test.sh: build and run the core unit tests",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/test.sh",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "test", "isDefault": true },
+      "presentation": { "reveal": "always", "clear": true },
+      "problemMatcher": {
+        "base": "$gcc",
+        "fileLocation": ["autoDetect", "${workspaceFolder}"]
+      }
+    },
+    {
+      "label": "lint",
+      "detail": "scripts/lint.sh: clang-tidy on the sources build/core compiles (run test first)",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/lint.sh",
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "clear": true },
+      "problemMatcher": {
+        "base": "$gcc",
+        "owner": "clang-tidy",
+        "fileLocation": ["autoDetect", "${workspaceFolder}"]
+      }
+    }
+  ]
+}
