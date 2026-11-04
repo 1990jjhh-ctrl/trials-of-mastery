@@ -21,6 +21,16 @@ Modules talk to each other only through the public API of the module they depend
 
 Setup, build and test commands, including running a single test: [README.md#build-and-test](README.md#build-and-test). Code style: [.clang-format](.clang-format).
 
+## Workflow
+
+Branches, commits, pull requests and what CI checks: [CONTRIBUTING.md](CONTRIBUTING.md). Before reporting a change as done, run the local checks in [CONTRIBUTING.md#workflow](CONTRIBUTING.md#workflow) (step 3) and report their results, including any you could not run.
+
+Work on a module or task goes through the agents in this order:
+
+1. `planner` breaks an approved PRD into a plan of tasks (e.g. [docs/stats/PLAN.md](docs/stats/PLAN.md)).
+2. `implementer` implements one task of the plan on its own branch.
+3. `reviewer` and `verifier` check the finished implementation, in parallel, before its pull request is merged.
+
 ## To fill in once code exists
 
 How the SKSE plugins, Papyrus scripts and ESPs work together.
