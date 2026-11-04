@@ -44,6 +44,10 @@ Linting (clang-tidy, [.clang-tidy](.clang-tidy)), after `scripts/test.sh` has co
 scripts/lint.sh
 ```
 
+## Contributing
+
+Branches, commits and pull requests: [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
 GPL-3.0-or-later, see [LICENSE](LICENSE).
