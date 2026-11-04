@@ -22,7 +22,24 @@
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "TOM_BUILD_TESTS": "ON"
+        "TOM_BUILD_TESTS": "ON",
+        "TOM_BUILD_PLUGIN": "OFF"
+      }
+    },
+    {
+      "name": "plugin",
+      "displayName": "SKSE plugin DLLs (Linux host, clang-cl cross-compile)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
+        "CMAKE_CXX_FLAGS": "/permissive- /EHsc /W4 /bigobj -Wno-overloaded-virtual -Wno-delete-non-abstract-non-virtual-dtor -Wno-inconsistent-missing-override -Wno-reinterpret-base-class -Wno-nonportable-include-path -Wno-deprecated-copy-with-user-provided-copy -Wno-invalid-offsetof -Wno-switch -Wno-unused-command-line-argument -Wno-deprecated-volatile -Wno-unused-private-field -Wno-multichar",
+        "TOM_BUILD_TESTS": "OFF",
+        "TOM_BUILD_PLUGIN": "ON",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-clangcl-static",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/cmake/triplets",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/lib/commonlibsse-ng/examples/linux-cross-compile/custom-ports",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/lib/commonlibsse-ng/cmake/toolchain-linux-clangcl.cmake"
       }
     }
   ],
@@ -30,6 +47,10 @@
     {
       "name": "core",
       "configurePreset": "core"
+    },
+    {
+      "name": "plugin",
+      "configurePreset": "plugin"
     }
   ],
   "testPresets": [

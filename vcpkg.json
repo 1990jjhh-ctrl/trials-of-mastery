@@ -13,6 +13,17 @@
       "dependencies": [
         "catch2"
       ]
+    },
+    "plugin": {
+      "description": "SKSE plugin DLLs; the CommonLibSSE-NG submodule needs these (Windows cross build only)",
+      "supports": "windows & x64",
+      "dependencies": [
+        "directxmath",
+        "directxtk",
+        "fmt",
+        "rapidcsv",
+        "spdlog"
+      ]
     }
   }
 }
