@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-Trials of Mastery is a Skyrim AE mod package made of separate modules (stats, professions, mastery, luck). There is no code, build system or test setup yet.
+Trials of Mastery is a Skyrim AE mod package made of separate modules (stats, professions, mastery, luck). The build and test setup exists; module code does not yet.
 
 Check the `Status:` line of a module's PRD before implementing it. While it reads DRAFT, work on the PRD, not on code.
 
@@ -17,6 +17,10 @@ Check the `Status:` line of a module's PRD before implementing it. While it read
 
 Modules talk to each other only through the public API of the module they depend on ([docs/PRD.md#2-modules](docs/PRD.md#2-modules)).
 
+## Build and test
+
+Setup, build and test commands, including running a single test: [README.md#build-and-test](README.md#build-and-test). Code style: [.clang-format](.clang-format).
+
 ## To fill in once code exists
 
-Build, lint and test commands (including running a single test), and how the SKSE plugins, Papyrus scripts and ESPs work together.
+How the SKSE plugins, Papyrus scripts and ESPs work together.
