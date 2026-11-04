@@ -23,8 +23,8 @@ These are the user's answers to the decisions in the first draft of this plan.
 
 | ID | Decision |
 | --- | --- |
-| D1 | CommonLibSSE-NG |
-| D2 | No MSVC. The plugin is cross-built on Linux with clang-cl 21 and lld-link against the xwin splat (VC and Windows Kits) in `/home/joel-hirsbrunner/xwin-out`. CMake and ninja are installed. vcpkg is not installed yet and is set up by T1.1 |
+| D1 | CommonLibSSE-NG (fork `alandtse/CommonLibSSE-NG`, branch `ng`) as a git submodule under `lib/commonlibsse-ng`, set up as in the Beyond Mastery plugin |
+| D2 | No MSVC. The plugin is cross-built on Linux with clang-cl 21 and lld-link against the xwin splat (VC and Windows Kits) in `/home/joel-hirsbrunner/xwin-out`. CMake and ninja are installed. vcpkg comes from `$VCPKG_ROOT`, not from a submodule. The plugins link the C++ runtime statically (/MT), checked after each build |
 | D3 | CMake |
 | D4 | Catch2, nlohmann/json, SimpleIni |
 | D5 | The Creation Kit Papyrus compiler under Wine (`<Skyrim>/Papyrus Compiler/PapyrusCompiler.exe`), with the vanilla sources and `TESV_Papyrus_Flags.flg` from `<Skyrim>/Data/Source/Scripts`. Caprica is not used |
@@ -62,22 +62,23 @@ These are the user's answers to the decisions in the first draft of this plan.
 
 #### T1.1 Build and test skeleton
 
-- **Goal:** CMake project with the core library target, the unit-test target and a placeholder plugin target that cross-builds with clang-cl. Dependencies come from vcpkg.
+- **Goal:** CMake project with the core library target, the unit-test target and a placeholder plugin target that cross-builds with clang-cl. Dependencies come from vcpkg, CommonLibSSE-NG from its submodule.
 - **Covers:** success criterion 4 (infrastructure).
 - **Scope:**
   - top-level `CMakeLists.txt` and `CMakePresets.json`;
-  - `vcpkg.json` and vcpkg as a git submodule under `external/vcpkg`, with a bootstrap step in the README;
-  - `cmake/toolchains/clang-cl-xwin.cmake`, with the xwin path as a cache variable;
-  - a custom vcpkg triplet for the Windows cross build, using the toolchain file as chainload;
-  - `modules/stats/CMakeLists.txt`, `.clang-format`, `.gitignore`;
-  - `README.md` (setup, bootstrap, build and test commands only);
+  - `vcpkg.json` and `vcpkg-configuration.json` (pinned baseline), for the vcpkg in `$VCPKG_ROOT`;
+  - the CommonLibSSE-NG submodule; its Linux cross-compile toolchain and custom ports are used as they are;
+  - a static-CRT vcpkg triplet for the Windows cross build, chainloading that toolchain;
+  - `scripts/` for setup, build, test, format and the runtime-dependency check;
+  - `modules/stats/CMakeLists.txt`, `.clang-format`, `.gitignore`, `LICENSE`;
+  - `README.md` (setup, build and test commands only);
   - the "To fill in" section of `CLAUDE.md`, replaced by a link to the README section.
 - **Interfaces:**
   - Targets: `tom_stats_core` (static library, standard C++ plus nlohmann/json and SimpleIni), `tom_stats_core_tests` (Catch2), `tom_stats_plugin` (Windows DLL, only in the cross preset).
   - Presets: `core` (native Linux, GCC or Clang) and `plugin` (clang-cl, lld-link, ninja).
 - **Verification:**
   - `unit`: `cmake --preset core && cmake --build --preset core && ctest --preset core` passes with one trivial test, and `ctest --preset core -R <name>` runs a single test.
-  - `cmake --preset plugin && cmake --build --preset plugin` produces an empty DLL that links against CommonLibSSE-NG.
+  - `scripts/build.sh` runs the unit tests and produces an empty DLL that links against CommonLibSSE-NG and does not import the C++ runtime DLLs.
 - **Depends on:** none.
 
 #### T1.2 Plugin skeleton loads in game; verify game version
@@ -448,7 +449,7 @@ Three tasks, all after S6b and C6, each **parallel**:
 ## Risks
 
 - **Game version (T1.2):** testing covers only 1.7.104. Address Library IDs found in the spikes must exist for 1.6.x as well, or the claim "1.6.x and newer" is untested there.
-- **Cross build:** CommonLibSSE-NG and the vcpkg ports must build with clang-cl and lld-link against xwin. Port build scripts that assume MSVC can fail. T1.1 shows this early; the fallback is to vendor the failing dependency as a submodule.
+- **Cross build:** CommonLibSSE-NG and the vcpkg ports must build with clang-cl and lld-link against xwin. Port build scripts that assume MSVC can fail. T1.1 showed that the CommonLibSSE-NG custom ports cover this (the directxtk shaders need Wine and llvm-mingw); for a new failing dependency the fallback is to vendor it as a submodule.
 - **Papyrus under Wine (S8):** this is blocked until Wine Mono or .NET is installed in the prefix. If the compiler still fails, A2 is blocked; fallback: revisit D5 (Caprica).
 - **S1 fails:** if the LevelUp menu cannot be suppressed cleanly, ST-19 and success criterion 1 need the revert fallback, or a PRD change. This is the highest-risk spike, so run it first.
 - **Check hooks (S6b):** persuasion and intimidation in vanilla are dialogue conditions on Speech, not a formula. Replacing them may need condition-function hooks, or may not be possible without an ESP, which the "no ESP" constraint rules out.
