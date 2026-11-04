@@ -6,6 +6,7 @@ add_library(tom_stats_core STATIC
     core/src/curve.cpp
     core/src/curve_parse.cpp
     core/src/stat_registry.cpp
+    core/src/stat_value.cpp
 )
 target_include_directories(tom_stats_core PUBLIC core/include)
 target_link_libraries(tom_stats_core
@@ -22,6 +23,7 @@ if(TOM_BUILD_TESTS)
         tests/unit/curve_parse_test.cpp
         tests/unit/curve_test.cpp
         tests/unit/stat_registry_test.cpp
+        tests/unit/stat_value_test.cpp
     )
     target_link_libraries(tom_stats_core_tests PRIVATE tom_stats_core Catch2::Catch2WithMain)
     tom_enable_warnings(tom_stats_core_tests)
