@@ -1,0 +1,22 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project state
+
+Trials of Mastery is a Skyrim AE mod package made of separate modules (stats, professions, mastery, luck). There is no code, build system or test setup yet.
+
+Check the `Status:` line of a module's PRD before implementing it. While it reads DRAFT, work on the PRD, not on code.
+
+## Where things are defined
+
+- Module split, dependencies, build order, shared constraints and domain ownership: [docs/PRD.md](docs/PRD.md)
+- Per-module requirements: [docs/stats/PRD.md](docs/stats/PRD.md), [docs/professions/PRD.md](docs/professions/PRD.md), [docs/mastery/PRD.md](docs/mastery/PRD.md), [docs/luck/PRD.md](docs/luck/PRD.md)
+- The v1 classes: [docs/professions/classes.md](docs/professions/classes.md)
+- Each PRD ends with its open questions. Don't settle one in code; raise it with the user.
+
+Modules talk to each other only through the public API of the module they depend on ([docs/PRD.md#2-modules](docs/PRD.md#2-modules)).
+
+## To fill in once code exists
+
+Build, lint and test commands (including running a single test), and how the SKSE plugins, Papyrus scripts and ESPs work together.
