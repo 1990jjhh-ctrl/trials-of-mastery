@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "trials-of-mastery",
+  "version-semver": "0.1.0",
+  "license": "GPL-3.0-or-later",
+  "dependencies": [
+    "nlohmann-json",
+    "simpleini"
+  ],
+  "features": {
+    "tests": {
+      "description": "Unit tests for the game-independent core libraries",
+      "dependencies": [
+        "catch2"
+      ]
+    }
+  }
+}
