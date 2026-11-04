@@ -448,7 +448,10 @@ Three tasks, all after S6b and C6, each **parallel**:
 
 ## Risks
 
-- **Game version (T1.2):** testing covers only 1.7.104. Address Library IDs found in the spikes must exist for 1.6.x as well, or the claim "1.6.x and newer" is untested there.
+- **Game version (T1.2):** testing covers only 1.7.104. Address Library IDs found in the spikes must exist for 1.6.x as well, or the claim "1.6.x and newer" is untested there. Checked on 2026-11-04, offline:
+  - the installed game is 1.7.104.0 (file version of `SkyrimSE.exe`), with SKSE 2.3.1 (`skse64_1_7_104.dll`);
+  - the Address Library for it is installed: `Data/SKSE/Plugins/versionlib-1-7-104-0.bin`, format 5, header version 1.7.104.0;
+  - the pinned CommonLibSSE-NG (release 15.5.0) names 1.7.104 as its latest AE runtime (`RUNTIME_SSE_LATEST_AE` in `SKSE/Version.h`), and its `REL::IDDB` reads format-5 files from `versionlib-<version>.bin`.
 - **Cross build:** CommonLibSSE-NG and the vcpkg ports must build with clang-cl and lld-link against xwin. Port build scripts that assume MSVC can fail. T1.1 showed that the CommonLibSSE-NG custom ports cover this (the directxtk shaders need Wine and llvm-mingw); for a new failing dependency the fallback is to vendor it as a submodule.
 - **Papyrus under Wine (S8):** this is blocked until Wine Mono or .NET is installed in the prefix. If the compiler still fails, A2 is blocked; fallback: revisit D5 (Caprica).
 - **S1 fails:** if the LevelUp menu cannot be suppressed cleanly, ST-19 and success criterion 1 need the revert fallback, or a PRD change. This is the highest-risk spike, so run it first.
