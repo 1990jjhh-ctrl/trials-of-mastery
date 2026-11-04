@@ -33,7 +33,20 @@ These are the user's answers to the decisions in the first draft of this plan.
 ## Assumptions and open questions
 
 1. **Repo layout (confirmed):** `modules/stats/` with `core/` (game-independent library), `plugin/` (SKSE DLL), `include/tom/stats/` (public C++ API headers), `papyrus/` (script sources), `data/` (default INI and JSON), `tests/` (unit and in-game). The top-level `CMakeLists.txt` adds the module.
-2. **Install paths (JSON confirmed, INI proposed):** the table folders `Data/SKSE/Plugins/trials-of-mastery/stats/{stats,skills,actions,incompatible}/` and the INI next to them as `Data/SKSE/Plugins/trials-of-mastery/stats.ini`.
+2. **Install paths (confirmed):** one DLL and one INI per module, sharing one package folder:
+
+   ```txt
+   Data/SKSE/Plugins/
+   +-- trials-of-mastery/
+   |   +-- data/
+   |   |   +-- stats/{stats,skills,actions,incompatible}/
+   |   +-- LICENSE.txt
+   |   +-- README.txt
+   +-- trials-of-mastery-stats.dll
+   +-- trials-of-mastery-stats.ini
+   ```
+
+   The compiled Papyrus script goes to `Data/Scripts/`, where the game looks for it. Later modules add their DLL, INI and `data/<module>/` folder next to these.
 3. **API registrations against JSON (confirmed, [overview §4](../PRD.md#4-shared-constraints)):** an entry registered through the API acts as that entry's default, and JSON patch files override it key by key.
 4. **XP modifier combination (confirmed):** each registered XP modifier (ST-17) is a factor `1 + m` under its owner's key, and all factors multiply.
 5. **Ascend through Papyrus (confirmed):** the ascend math lives in C++. The Papyrus binding only passes on a [curve](../PRD.md#41-curves) name and its parameters.
@@ -117,7 +130,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 
 - **Goal:** typed configuration from the INI and the four merged tables, the shipped default files and the JSON schemas.
 - **Covers:** ST-3, ST-9, ST-14 (mapping data), ST-15 (check and training data), ST-21 (groups), ST-27, ST-28 (incompatible list).
-- **Scope:** `core/config/`, `modules/stats/data/Stats.ini`, `data/{stats,skills,actions,incompatible}/_default.json`, `data/schema/{stats,skills,actions,incompatible}.schema.json`.
+- **Scope:** `core/config/`, `modules/stats/data/trials-of-mastery-stats.ini`, `data/{stats,skills,actions,incompatible}/_default.json`, `data/schema/{stats,skills,actions,incompatible}.schema.json`.
 - **Interfaces:**
   - `Settings`: the INI values of ST-27, plus the gamepad button of ST-24.
   - `StatsTable`: per stat, the group, base and effects (actor-value or named, each with a curve).
