@@ -5,3 +5,7 @@
 
 #include <RE/Skyrim.h>
 #include <SKSE/SKSE.h>
+
+// The plugin version data that target_commonlibsse_properties() generates uses
+// "..."sv without declaring the literal operator itself.
+using namespace std::literals;
