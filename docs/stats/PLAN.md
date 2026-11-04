@@ -1,6 +1,6 @@
 # Trials of Mastery Stats: Implementation Plan
 
-Status: DRAFT, awaiting approval
+Status: APPROVED
 Date: 2026-11-04
 Implements: [Stats PRD](PRD.md) (ST-1 to ST-28). Shared rules: [overview](../PRD.md).
 
