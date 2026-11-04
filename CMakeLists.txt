@@ -40,6 +40,11 @@ if(TOM_BUILD_PLUGIN)
     set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
     set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
     add_subdirectory(lib/commonlibsse-ng EXCLUDE_FROM_ALL)
+
+    # target_commonlibsse_properties() lives in the submodule's
+    # cmake/CommonLibSSE.cmake, which its CMakeLists only includes for prebuilt
+    # binaries; a source build includes it itself.
+    include(lib/commonlibsse-ng/cmake/CommonLibSSE.cmake)
 endif()
 
 add_subdirectory(modules/stats)
