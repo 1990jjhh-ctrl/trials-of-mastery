@@ -17,6 +17,17 @@ Titles follow [Conventional Commits](https://www.conventionalcommits.org): `<typ
 
 [gitlint](https://jorisroovers.com/gitlint/) checks every commit message. Install it (`pipx install gitlint`, or your distribution's package) and run `gitlint install-hook` once per clone, so a bad message is rejected when you commit. `gitlint --commits main..HEAD` checks a branch's commits.
 
+## CI
+
+[.github/workflows/ci.yml](.github/workflows/ci.yml) runs on every pull request and every push to `main`, and must pass before a merge. It runs the same scripts as step 3 of the workflow, with the same tool versions:
+
+- gitlint on the pull request's commits;
+- `scripts/format.sh --check`;
+- `scripts/test.sh`, the native unit tests of the `core` preset;
+- `scripts/lint.sh`.
+
+It does not cover the cross build of the plugin DLLs (`plugin` preset, `scripts/build.sh`) and the runtime-import check, which need the xwin MSVC sysroot, clang-cl and Wine, nor anything in the game. Those stay local, so run `scripts/build.sh` yourself for a change to a plugin.
+
 ## Editor settings
 
 [.editorconfig](.editorconfig) sets indentation, line endings and final newlines for every file type in the repository, so editors without a clang-format integration write files the way the formatter and the existing files expect. Most editors read it natively; VS Code needs the EditorConfig extension.
