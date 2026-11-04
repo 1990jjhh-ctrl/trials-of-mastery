@@ -3,6 +3,11 @@
 // The curves of docs/PRD.md#41-curves, which every JSON-configured formula
 // uses. The formulas and parameter meanings are defined there.
 
+#include "tom/stats/core/error.h"
+
+#include <nlohmann/json_fwd.hpp>
+
+#include <expected>
 #include <variant>
 
 namespace tom::stats
@@ -36,4 +41,12 @@ using Curve = std::variant<LinearCurve, PowerCurve, AsymptoticCurve>;
 // Mirrored through (0, S) for x < 0, see docs/PRD.md#41-curves.
 [[nodiscard]] double evaluate(const AsymptoticCurve& curve, double x);
 [[nodiscard]] double evaluate(const Curve& curve, double x);
+
+// Reads a curve from a JSON object that names it and gives its parameters:
+//   { "curve": "linear", "a": ..., "b": ... }
+//   { "curve": "power", "alpha": ..., "lambda": ... }
+//   { "curve": "asymptotic", "S": ..., "E": ..., "c": ... }
+// Every parameter is required and must be a finite number. Other keys are
+// ignored.
+[[nodiscard]] std::expected<Curve, Error> parseCurve(const nlohmann::json& value);
 }
