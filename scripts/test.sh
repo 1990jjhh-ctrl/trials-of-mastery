@@ -6,7 +6,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-: "${VCPKG_ROOT:?VCPKG_ROOT not set, run scripts/setup.sh first}"
+: "${VCPKG_ROOT:?VCPKG_ROOT not set, run lib/skyrim-mod-toolchain/scripts/setup.sh first}"
 
 cmake --preset core
 cmake --build --preset core

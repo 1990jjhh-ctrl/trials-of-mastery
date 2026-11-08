@@ -2,7 +2,7 @@
 #
 # For C++ the formatter decides: these values follow .clang-format (UseTab,
 # IndentWidth, TabWidth, LineEnding), and on any difference .clang-format wins.
-# lib/commonlibsse-ng is a submodule with its own .editorconfig.
+# lib/ holds submodules (the toolchain and its nested CommonLibSSE-NG) with their own style.
 root = true
 
 [*]
