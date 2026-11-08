@@ -4,13 +4,7 @@ A Skyrim AE mod package of SKSE plugins (stats, professions, mastery, luck). Goa
 
 ## Setup
 
-On a Linux host, run once:
-
-```sh
-scripts/setup.sh
-```
-
-It checks the system tools and tells you what to install. It also sets up llvm-mingw, the CommonLibSSE-NG submodule, the xwin sysroot (MSVC CRT and Windows SDK) and vcpkg in your home directory. At the end it prints the environment variables to add to your shell profile (`VCPKG_ROOT`, `XWIN_SYSROOT`, `LLVM_MINGW_BIN`).
+On a Linux host, run once `lib/skyrim-mod-toolchain/scripts/setup.sh` (after `git submodule update --init --recursive`). What it installs and the environment variables it prints for your shell profile are described in [lib/skyrim-mod-toolchain/README.md#setup](lib/skyrim-mod-toolchain/README.md#setup).
 
 ## Build and test
 
@@ -34,14 +28,14 @@ scripts/test.sh -R "<test name>"   # single test
 Formatting:
 
 ```sh
-scripts/format.sh           # fix in place
-scripts/format.sh --check   # report only
+lib/skyrim-mod-toolchain/scripts/format.sh modules           # fix in place
+lib/skyrim-mod-toolchain/scripts/format.sh --check modules   # report only
 ```
 
 Linting (clang-tidy, [.clang-tidy](.clang-tidy)), after `scripts/test.sh` has configured `build/core`:
 
 ```sh
-scripts/lint.sh
+lib/skyrim-mod-toolchain/scripts/lint.sh build/core modules
 ```
 
 ## Contributing
