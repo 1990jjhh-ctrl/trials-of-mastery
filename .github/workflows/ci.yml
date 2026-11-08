@@ -1,7 +1,7 @@
 # Checks every pull request and every push to main with the same scripts a
-# developer runs (CONTRIBUTING.md#ci). It does not cross-build the plugin DLLs:
-# scripts/build.sh needs the xwin MSVC sysroot, clang-cl and Wine, so the
-# plugin preset and the runtime-import check stay local.
+# developer runs (CONTRIBUTING.md#ci), including the cross build of the plugin
+# DLLs and the runtime-import check (scripts/build.sh). The toolchain comes
+# from the setup action of lib/skyrim-mod-toolchain.
 name: CI
 
 on:
@@ -30,65 +30,27 @@ jobs:
         run: gitlint --commits "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
 
   checks:
-    name: Format, unit tests (core preset) and lint
+    name: Format, tests, lint and cross build
     runs-on: ubuntu-24.04
+    timeout-minutes: 90
     steps:
-      # The core preset does not use the CommonLibSSE-NG submodule.
       - uses: actions/checkout@v7
-
-      - name: ninja
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ninja-build
-
-      # The locations scripts/setup.sh installs to, which the scripts default to.
-      - name: Tool locations
-        run: |
-          echo "VCPKG_ROOT=$HOME/.local/share/vcpkg" >> "$GITHUB_ENV"
-          echo "LLVM_MINGW_DIR=$HOME/.local/opt/llvm-mingw" >> "$GITHUB_ENV"
-
-      # clang-format and clang-tidy come from llvm-mingw, at the version
-      # scripts/setup.sh pins, because their output differs between versions.
-      - name: llvm-mingw version from scripts/setup.sh
-        id: llvm-mingw
-        run: echo "version=$(sed -n 's/^LLVM_MINGW_VER="\([0-9]*\)".*/\1/p' scripts/setup.sh)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache llvm-mingw
-        id: llvm-mingw-cache
-        uses: actions/cache@v6
         with:
-          path: ~/.local/opt/llvm-mingw
-          key: llvm-mingw-${{ steps.llvm-mingw.outputs.version }}
+          submodules: recursive
 
-      - name: Download llvm-mingw ${{ steps.llvm-mingw.outputs.version }}
-        if: steps.llvm-mingw-cache.outputs.cache-hit != 'true'
-        env:
-          VER: ${{ steps.llvm-mingw.outputs.version }}
-        run: |
-          test -n "$VER"
-          mkdir -p "$LLVM_MINGW_DIR"
-          curl -fsSL --retry 3 "https://github.com/mstorsjo/llvm-mingw/releases/download/$VER/llvm-mingw-$VER-ucrt-ubuntu-22.04-x86_64.tar.xz" \
-            | tar -xJ -C "$LLVM_MINGW_DIR" --strip-components=1
-
-      - name: scripts/format.sh --check
-        run: scripts/format.sh --check
-
-      # vcpkg itself is cloned as scripts/setup.sh does; the port versions are
-      # pinned by the baseline in vcpkg-configuration.json.
-      - name: vcpkg
-        run: |
-          git clone --depth 1 https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
-          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
-
-      - name: Cache vcpkg binary packages
-        uses: actions/cache@v6
+      - name: Set up the cross-compile toolchain
+        uses: ./lib/skyrim-mod-toolchain/.github/actions/setup
         with:
-          path: ~/.cache/vcpkg/archives
-          key: vcpkg-core-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
-          restore-keys: vcpkg-core-
+          native-tests: "true"
 
       - name: scripts/test.sh
         run: scripts/test.sh
 
-      - name: scripts/lint.sh
-        run: scripts/lint.sh
+      - name: Formatting (format.sh --check)
+        run: lib/skyrim-mod-toolchain/scripts/format.sh --check modules
+
+      - name: Lint (lint.sh)
+        run: lib/skyrim-mod-toolchain/scripts/lint.sh build/core modules
+
+      - name: scripts/build.sh
+        run: scripts/build.sh

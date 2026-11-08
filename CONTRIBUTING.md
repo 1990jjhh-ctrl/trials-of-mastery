@@ -8,7 +8,7 @@ Every change goes through a branch and a pull request; nothing is committed to `
 
 1. **Branch** from `main`, named `<module>/<task-id>-<slug>`, e.g. `stats/t1.1-build-setup`.
 2. **Commit** one logical change per commit, so the pull request can be reviewed commit by commit. Fix a commit that is not merged yet by folding the fix into it (`git commit --fixup=<commit>`, then `git rebase --autosquash main`) instead of adding a fix-up commit.
-3. **Check** locally before opening the pull request: `scripts/test.sh`, `scripts/format.sh --check` and `scripts/lint.sh` ([README.md#build-and-test](README.md#build-and-test)). A change to a plugin also needs `scripts/build.sh` and the in-game checks its task names.
+3. **Check** locally before opening the pull request: `scripts/test.sh`, `lib/skyrim-mod-toolchain/scripts/format.sh --check modules` and `lib/skyrim-mod-toolchain/scripts/lint.sh build/core modules` ([README.md#build-and-test](README.md#build-and-test)). A change to a plugin also needs `scripts/build.sh` and the in-game checks its task names.
 4. **Open a pull request** against `main`. It is merged with a merge commit, so the branch's commits land on `main` as they are.
 
 ## Commit messages
@@ -22,11 +22,12 @@ Titles follow [Conventional Commits](https://www.conventionalcommits.org): `<typ
 [.github/workflows/ci.yml](.github/workflows/ci.yml) runs on every pull request and every push to `main`, and must pass before a merge. It runs the same scripts as step 3 of the workflow, with the same tool versions:
 
 - gitlint on the pull request's commits;
-- `scripts/format.sh --check`;
 - `scripts/test.sh`, the native unit tests of the `core` preset;
-- `scripts/lint.sh`.
+- `lib/skyrim-mod-toolchain/scripts/format.sh --check modules`;
+- `lib/skyrim-mod-toolchain/scripts/lint.sh build/core modules`;
+- `scripts/build.sh`, the cross build of the plugin DLLs (`plugin` preset) and the runtime-import check.
 
-It does not cover the cross build of the plugin DLLs (`plugin` preset, `scripts/build.sh`) and the runtime-import check, which need the xwin MSVC sysroot, clang-cl and Wine, nor anything in the game. Those stay local, so run `scripts/build.sh` yourself for a change to a plugin.
+The toolchain is set up by the action in `lib/skyrim-mod-toolchain` ([README.md#setup](README.md#setup)). Nothing in the game is covered, so run the in-game checks a task names yourself.
 
 ## Editor settings
 

@@ -39,7 +39,7 @@ if(TOM_BUILD_PLUGIN)
     set(ENABLE_SKYRIM_AE ON CACHE BOOL "" FORCE)
     set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
     set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    add_subdirectory(lib/commonlibsse-ng EXCLUDE_FROM_ALL)
+    include(lib/skyrim-mod-toolchain/cmake/commonlibsse.cmake)
 endif()
 
 add_subdirectory(modules/stats)

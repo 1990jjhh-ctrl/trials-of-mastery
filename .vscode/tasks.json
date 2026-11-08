@@ -3,10 +3,10 @@
   "tasks": [
     {
       "label": "format: check",
-      "detail": "scripts/format.sh --check: report clang-format violations without changing anything",
+      "detail": "toolchain format.sh --check modules: report clang-format violations without changing anything",
       "type": "shell",
-      "command": "${workspaceFolder}/scripts/format.sh",
-      "args": ["--check"],
+      "command": "${workspaceFolder}/lib/skyrim-mod-toolchain/scripts/format.sh",
+      "args": ["--check", "modules"],
       "options": { "cwd": "${workspaceFolder}" },
       "presentation": { "reveal": "always", "clear": true },
       "problemMatcher": {
@@ -17,9 +17,10 @@
     },
     {
       "label": "format: fix",
-      "detail": "scripts/format.sh: format modules/ in place",
+      "detail": "toolchain format.sh modules: format modules/ in place",
       "type": "shell",
-      "command": "${workspaceFolder}/scripts/format.sh",
+      "command": "${workspaceFolder}/lib/skyrim-mod-toolchain/scripts/format.sh",
+      "args": ["modules"],
       "options": { "cwd": "${workspaceFolder}" },
       "presentation": { "reveal": "always", "clear": true },
       "problemMatcher": []
@@ -39,9 +40,10 @@
     },
     {
       "label": "lint",
-      "detail": "scripts/lint.sh: clang-tidy on the sources build/core compiles (run test first)",
+      "detail": "toolchain lint.sh: clang-tidy on the sources build/core compiles (run test first)",
       "type": "shell",
-      "command": "${workspaceFolder}/scripts/lint.sh",
+      "command": "${workspaceFolder}/lib/skyrim-mod-toolchain/scripts/lint.sh",
+      "args": ["build/core", "modules"],
       "options": { "cwd": "${workspaceFolder}" },
       "presentation": { "reveal": "always", "clear": true },
       "problemMatcher": {
