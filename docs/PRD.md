@@ -48,7 +48,7 @@ Every formula that a JSON file configures uses one of these curves. `x` is the i
 | --- | --- | --- |
 | linear | `a · x + b` | `a`, `b` |
 | power | `α · sign(x) · \|x\|^λ` | `α`, `λ`; `λ = 0.5` is the square root. Mirrored for `x < 0`, so a negative input gives a negative value |
-| asymptotic | `E + (S − E) · e^(−\|c\| · x)` | `S`, the value at `x = 0`; `E`, the end value approached as `x` grows; `c`, how fast `E` is approached |
+| asymptotic | `S + sign(x) · (E − S) · (1 − e^(−\|c\| · \|x\|))` | `S`, the value at `x = 0`; `E`, the end value approached as `x` grows; `c`, how fast `E` is approached. For `x ≥ 0` this is `E + (S − E) · e^(−\|c\| · x)`; for `x < 0` the curve is mirrored through `(0, S)`, so a negative input stays bounded by `2S − E` and the slope is the same on both sides of 0 |
 
 ## 5. Compatibility
 

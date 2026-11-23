@@ -109,6 +109,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - linear curves give the expected values;
   - power is mirrored for `x < 0` and is the square root for λ = 0.5;
   - asymptotic gives `S` at 0, approaches `E` and treats `c` as `|c|`;
+  - asymptotic is mirrored through `(0, S)` for `x < 0`: bounded by `2S − E`, with the same slope on both sides of 0;
   - the ST-15 example values come out (weapon fit, trade curve);
   - unknown curve names and missing parameters are rejected.
 - **Depends on:** T1.1. **Parallel** with C2, C4.
