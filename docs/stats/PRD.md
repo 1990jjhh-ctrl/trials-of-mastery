@@ -123,7 +123,7 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, detection, sp
 
 ### 7.4 Training and actions
 
-- ST-14: Skills train stats through a skill-to-stat mapping in the skills file. Each time a skill levels up, the stat XP equals the level reached and is split between the skill's primary and secondary stat at a configurable ratio. A default for the vanilla skills ships with the module, and patches and the API add or replace entries.
+- ST-14: Skills train stats through a skill-to-stat mapping in the skills file. Each time a skill levels up, the stat XP equals the level reached and is split between the skill's primary and secondary stat at a configurable ratio. A default for the vanilla skills ships with the module; patches and API registrations change it by the [overview merge rules](../PRD.md#4-shared-constraints).
 - ST-15: The module ships a fixed set of actions, each with its own game hook. For each action, the actions file defines:
   - a check: a [curve](../PRD.md#41-curves) per stat and per skill, with the effective stat or the skill level as input, giving `I = Σ curve(x)` over all inputs. The module turns `I` into the game result of that action, such as the lockpicking sweet spot, the pickpocket chance or the barter price. The skill level keeps its own weight, so a high stat does not make a novice succeed at master-level checks;
   - training: which stats the action trains and a curve for the XP of each.
