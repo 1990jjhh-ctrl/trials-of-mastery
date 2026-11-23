@@ -163,9 +163,9 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - `double cost(double r, int32 k)` returns `+inf` on overflow.
   - `GainResult addXp(StatValue&, double xp, double r)`.
   - `advance(StatValue&)`.
-  - `ascend(StatValue&, function<int32(int32)>)`.
+  - `ascend(StatValue&, function<double(int32)>)`; the module rounds the formula's result down (ST-6).
   - `double effective(const ActorStats&, StatId)`.
-- **Verification:** `unit` tests for the cost formula and overflow, several points from one large XP amount with carry-over, advance, ascend, effective value with several modifier keys and removal of one key, and no clamp at 100.
+- **Verification:** `unit` tests for the cost formula and overflow, several points from one large XP amount with carry-over, advance, ascend with rounding down (2.9 gives 2), effective value with several modifier keys and removal of one key, and no clamp at 100.
 - **Depends on:** T1.1. **Parallel** with C1, C2.
 
 #### C5 Effect math
