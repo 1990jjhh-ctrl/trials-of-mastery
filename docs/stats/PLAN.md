@@ -23,7 +23,7 @@ These are the user's answers to the decisions in the first draft of this plan.
 
 | ID | Decision |
 | --- | --- |
-| D1 | CommonLibSSE-NG (fork `alandtse/CommonLibSSE-NG`, branch `ng`) as a git submodule under `lib/commonlibsse-ng`, set up as in the Beyond Mastery plugin |
+| D1 | CommonLibSSE-NG (fork `alandtse/CommonLibSSE-NG`, branch `ng`), built from the skyrim-mod-toolchain submodule under `lib/skyrim-mod-toolchain` ([README.md#setup](../../README.md#setup)) |
 | D2 | No MSVC. The plugin is cross-built on Linux with clang-cl 21 and lld-link against the xwin splat (VC and Windows Kits) in `/home/joel-hirsbrunner/xwin-out`. CMake and ninja are installed. vcpkg comes from `$VCPKG_ROOT`, not from a submodule. The plugins link the C++ runtime statically (/MT), checked after each build |
 | D3 | CMake |
 | D4 | Catch2, nlohmann/json, SimpleIni |
