@@ -32,12 +32,13 @@ Trials of Mastery replaces vanilla Skyrim leveling with trained stats, professio
 - Each module is an SKSE C++ plugin plus Papyrus/ESP where it needs quests, menus or forms.
 - Tables that players and other mods tune (mappings, classes, modifiers) are JSON files; scalar settings are INI values.
 - JSON files are patched by merging, the same way in every module:
-  - Each table has a folder. The module's default file, `_default.json`, loads first.
-  - Files without a plugin name load next, in alphabetical order. A file named after a plugin without its extension (`Requiem.json` for `Requiem.esp`) loads only while that plugin is active, in plugin load order, after the unnamed files. When several active plugins share that name (`Foo.esm` and `Foo.esp`), the file loads at the last of them and a warning is logged.
+  - Each table has a folder. Layers apply from lowest to highest: entries registered through the API, the module's default file `_default.json`, plain patches, mod patches.
+  - Entries that a mod registers through a module's API add keys; `_default.json` overrides them, and JSON patches override both. To change a shipped default, a mod ships a JSON patch.
+  - Plain patches lie directly in the table's folder and load in alphabetical order.
+  - Mod patches lie in the table's `plugins/` subfolder, named after their plugin without its extension (`plugins/Requiem.json` for `Requiem.esp`). Such a file loads only while that plugin is active, in plugin load order; otherwise it is ignored and the skip is logged. When several active plugins share that name (`Foo.esm` and `Foo.esp`), the file loads at the last of them and a warning is logged.
   - Objects merge key by key, recursively for nested objects: a key in a later file replaces the same key, a new key is added, a key the file leaves out stays. `null` removes a key.
-  - Entries that a mod registers through a module's API count as defaults: JSON patches override them key by key.
   - Entries are objects keyed by name, never lists. Names added by other mods are namespaced (`<Mod>:<Name>`).
-  - When two patch files set the same key, the later one wins and the conflict is logged. Overriding the default file is not a conflict.
+  - When two patch files set the same key, the later one wins and the conflict is logged. Overriding API entries or the default file is not a conflict.
 
 ### 4.1 Curves
 
@@ -47,7 +48,7 @@ Every formula that a JSON file configures uses one of these curves. `x` is the i
 | --- | --- | --- |
 | linear | `a · x + b` | `a`, `b` |
 | power | `α · sign(x) · \|x\|^λ` | `α`, `λ`; `λ = 0.5` is the square root. Mirrored for `x < 0`, so a negative input gives a negative value |
-| asymptotic | `E + (S − E) · e^(−\|c\| · x)` | `S`, the value at `x = 0`; `E`, the end value approached as `x` grows; `c`, how fast `E` is approached |
+| asymptotic | `S + sign(x) · (E − S) · (1 − e^(−\|c\| · \|x\|))` | `S`, the value at `x = 0`; `E`, the end value approached as `x` grows; `c`, how fast `E` is approached. For `x ≥ 0` this is `E + (S − E) · e^(−\|c\| · x)`; for `x < 0` the curve is mirrored through `(0, S)`, so a negative input stays bounded by `2S − E` and the slope is the same on both sides of 0 |
 
 ## 5. Compatibility
 

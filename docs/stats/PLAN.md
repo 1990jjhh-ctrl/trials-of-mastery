@@ -23,7 +23,7 @@ These are the user's answers to the decisions in the first draft of this plan.
 
 | ID | Decision |
 | --- | --- |
-| D1 | CommonLibSSE-NG (fork `alandtse/CommonLibSSE-NG`, branch `ng`) as a git submodule under `lib/commonlibsse-ng`, set up as in the Beyond Mastery plugin |
+| D1 | CommonLibSSE-NG (fork `alandtse/CommonLibSSE-NG`, branch `ng`), built from the skyrim-mod-toolchain submodule under `lib/skyrim-mod-toolchain` ([README.md#setup](../../README.md#setup)) |
 | D2 | No MSVC. The plugin is cross-built on Linux with clang-cl 21 and lld-link against the xwin splat (VC and Windows Kits) in `/home/joel-hirsbrunner/xwin-out`. CMake and ninja are installed. vcpkg comes from `$VCPKG_ROOT`, not from a submodule. The plugins link the C++ runtime statically (/MT), checked after each build |
 | D3 | CMake |
 | D4 | Catch2, nlohmann/json, SimpleIni |
@@ -47,7 +47,7 @@ These are the user's answers to the decisions in the first draft of this plan.
    ```
 
    The compiled Papyrus script goes to `Data/Scripts/`, where the game looks for it. Later modules add their DLL, INI and `data/<module>/` folder next to these.
-3. **API registrations against JSON (confirmed, [overview §4](../PRD.md#4-shared-constraints)):** an entry registered through the API acts as that entry's default, and JSON patch files override it key by key.
+3. **API registrations against JSON (confirmed):** API-registered entries are the lowest layer of the table merge ([overview §4](../PRD.md#4-shared-constraints)).
 4. **XP modifier combination (confirmed):** each registered XP modifier (ST-17) is a factor `1 + m` under its owner's key, and all factors multiply.
 5. **Ascend through Papyrus (confirmed):** the ascend math lives in C++. The Papyrus binding only passes on a [curve](../PRD.md#41-curves) name and its parameters.
 6. **Numeric types:** base, point counts and modifiers are signed 32-bit integers. XP, cost, multiplier and effective stat are `double`.
@@ -109,6 +109,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - linear curves give the expected values;
   - power is mirrored for `x < 0` and is the square root for λ = 0.5;
   - asymptotic gives `S` at 0, approaches `E` and treats `c` as `|c|`;
+  - asymptotic is mirrored through `(0, S)` for `x < 0`: bounded by `2S − E`, with the same slope on both sides of 0;
   - the ST-15 example values come out (weapon fit, trade curve);
   - unknown curve names and missing parameters are rejected.
 - **Depends on:** T1.1. **Parallel** with C2, C4.
@@ -119,8 +120,8 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 - **Covers:** ST-27, [§9 Broken patches](PRD.md#9-risks).
 - **Interfaces:**
   - `PluginQuery` (abstract: active plugins in load order, with name and extension).
-  - `TableSource` (file name plus text). A filesystem enumerator is a thin helper on top.
-  - `mergeTable(sources, PluginQuery&) -> MergeResult { json merged; vector<Diagnostic> }`. Diagnostics cover file order, conflicts, removed keys, warnings for same-name plugins and skipped invalid files.
+  - `TableSource` (file name plus text, and whether it is a mod patch from `plugins/`). A filesystem enumerator is a thin helper on top.
+  - `mergeTable(sources, PluginQuery&, registered) -> MergeResult { json merged; vector<Diagnostic> }`, with the API-registered entries as the lowest layer (assumption 3). Diagnostics cover file order, conflicts, removed keys, warnings for same-name plugins and skipped invalid files.
 - **Verification:** `unit`, one test per rule in the overview, including:
   - same-name plugins: the file loads at the last of them and a warning is logged;
   - overriding the default file is not reported as a conflict;
@@ -162,9 +163,9 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - `double cost(double r, int32 k)` returns `+inf` on overflow.
   - `GainResult addXp(StatValue&, double xp, double r)`.
   - `advance(StatValue&)`.
-  - `ascend(StatValue&, function<int32(int32)>)`.
+  - `ascend(StatValue&, function<double(int32)>)`; the module rounds the formula's result down (ST-6).
   - `double effective(const ActorStats&, StatId)`.
-- **Verification:** `unit` tests for the cost formula and overflow, several points from one large XP amount with carry-over, advance, ascend, effective value with several modifier keys and removal of one key, and no clamp at 100.
+- **Verification:** `unit` tests for the cost formula and overflow, several points from one large XP amount with carry-over, advance, ascend with rounding down (2.9 gives 2), effective value with several modifier keys and removal of one key, and no clamp at 100.
 - **Depends on:** T1.1. **Parallel** with C1, C2.
 
 #### C5 Effect math
@@ -195,7 +196,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - `actionTrainingXp(action, input) -> vector<{StatId, double}>`.
   - `double checkValue(action, actor, skillLevels)`.
   - `double checkResult(action, I)` (assumption 7).
-  - API entries are the defaults that JSON entries override, in one isolated merge step (assumption 3).
+  - API entries reach the tables through C2's `registered` layer (assumption 3).
 - **Verification:** `unit` tests check that:
   - the split applies to the level reached;
   - an unmapped skill gives no XP;
@@ -270,7 +271,7 @@ Each spike is a throwaway prototype in the plugin with a time box. Its result is
 - **Goal:** load the INI and the four tables at `kDataLoaded`, with a `PluginQuery` backed by the game's loaded-plugin list.
 - **Covers:** ST-3, ST-27, ST-28 (the table is loaded here; K1 acts on it).
 - **Interfaces:** uses C2, C3, C7. A game `PluginQuery` adapter.
-- **Verification:** `log`. The log lists file order, conflicts, same-name warnings, skipped files and each `TODO(OQ-n)` placeholder in use. A test patch and a plugin-named file for an inactive plugin behave as C2 specifies.
+- **Verification:** `log`. The log lists file order, conflicts, same-name warnings, skipped files and each `TODO(OQ-n)` placeholder in use. A plain test patch and a mod patch in `plugins/` for an inactive plugin behave as C2 specifies.
 - **Depends on:** T1.2, C3, C7.
 
 #### G2 Co-save persistence and actor lifecycle
