@@ -29,7 +29,7 @@ Work on a module or task goes through the agents in this order:
 
 1. `planner` breaks an approved PRD into a plan of tasks (e.g. [docs/stats/PLAN.md](docs/stats/PLAN.md)).
 2. `implementer` implements one task of the plan on its own branch.
-3. `reviewer` and `verifier` check the finished implementation, in parallel, before its pull request is merged.
+3. `reviewer` and `verifier` check the finished implementation, in parallel. The reviewer merges the pull request once its verdict is approve, the verifier passed on the same head and CI is green.
 
 ## To fill in once code exists
 
