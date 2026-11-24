@@ -4,6 +4,7 @@ find_package(SimpleIni CONFIG REQUIRED)
 # Game-independent formula and configuration core.
 add_library(tom_stats_core STATIC
     core/src/actor_stats.cpp
+    core/src/config/settings.cpp
     core/src/curve.cpp
     core/src/curve_parse.cpp
     core/src/stat_registry.cpp
@@ -26,12 +27,15 @@ if(TOM_BUILD_TESTS)
         tests/unit/actor_stats_test.cpp
         tests/unit/curve_parse_test.cpp
         tests/unit/curve_test.cpp
+        tests/unit/settings_test.cpp
         tests/unit/stat_registry_test.cpp
         tests/unit/stat_value_test.cpp
         tests/unit/table_folder_test.cpp
         tests/unit/table_merge_test.cpp
     )
     target_link_libraries(tom_stats_core_tests PRIVATE tom_stats_core Catch2::Catch2WithMain)
+    # The shipped INI and tables, which the tests load as they are.
+    target_compile_definitions(tom_stats_core_tests PRIVATE TOM_STATS_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
     tom_enable_warnings(tom_stats_core_tests)
     catch_discover_tests(tom_stats_core_tests)
 endif()
