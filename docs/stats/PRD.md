@@ -172,7 +172,7 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, detection, sp
 
 ### 7.8 Configuration
 
-- ST-27: The INI holds only single settings: `r`, N (ST-6, default 5), free points per level-up, the stat box key and the override of ST-28. Tables live in four JSON files, which players and other mods patch by the merge rules in the [overview](../PRD.md#4-shared-constraints):
+- ST-27: The INI holds only single settings: `r` (ST-6, default 2, which equals the mastery module's `r_N` (MA-1) at 0 Ascensions), N (ST-6, default 5), free points per level-up, the stat box key and the override of ST-28. Tables live in four JSON files, which players and other mods patch by the merge rules in the [overview](../PRD.md#4-shared-constraints):
   - stats: group, base value and effects per stat;
   - skills: the skill-to-stat mapping and the primary to secondary split;
   - actions: checks and training per action;
