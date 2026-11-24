@@ -240,3 +240,5 @@ Status levels and domain ownership are defined in the [overview](../PRD.md#5-com
 - Direct activity XP (ST-15): the amounts per DEX hit, spell, damage taken, disease and poison (they must stay small); the XP for persuading and intimidating by target. Direct XP and skill level-up XP stack.
 - Behaviour on detecting an incompatible mod: warn only, or disable (ST-28 currently disables).
 - An adjustment added or removed after character creation (ST-3, ST-26): does it move the start value together with the base, so pools don't change, or only the base?
+- STR XP for unarmed attacks by glove weight (ST-15): the curve and its amounts.
+- PER XP for fighting (ST-15): what counts as fighting and how much XP it gives.
