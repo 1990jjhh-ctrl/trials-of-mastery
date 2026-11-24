@@ -131,7 +131,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 #### C3 Settings and tables
 
 - **Goal:** typed configuration from the INI and the four merged tables, the shipped default files and the JSON schemas.
-- **Covers:** ST-3, ST-9, ST-14 (mapping data), ST-15 (check and training data), ST-21 (groups), ST-27, ST-28 (incompatible list).
+- **Covers:** ST-3, ST-6 (`r` validation at load), ST-9, ST-14 (mapping data), ST-15 (check and training data), ST-21 (groups), ST-27, ST-28 (incompatible list).
 - **Scope:** `core/config/`, `modules/stats/data/trials-of-mastery-stats.ini`, `data/{stats,skills,actions,incompatible}/_default.json`, `data/schema/{stats,skills,actions,incompatible}.schema.json`.
 - **Interfaces:**
   - `Settings`: the INI values of ST-27, plus the gamepad button of ST-24.
@@ -149,7 +149,8 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - the shipped defaults parse and validate against the schemas;
   - they contain the default mapping and groups of [ST-27](PRD.md#78-configuration);
   - invalid entries are reported with file and key;
-  - INI defaults are loaded when keys are missing.
+  - INI defaults are loaded when keys are missing;
+  - an INI value of `r` that [ST-6](PRD.md#72-xp-and-cost) rejects is logged and replaced by the built-in default, the same one used for a missing key (at load, that default is the previous value).
 - **Depends on:** C1, C2. **Sequential.**
 
 #### C4 Stat values, cost and progression
@@ -209,7 +210,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 #### C7 Stats service, level-up logic and events
 
 - **Goal:** one facade over registry, actor states, tables, modifiers and events. The game layer and the API call only this facade.
-- **Covers:** ST-6 (auto-advance, advance claim, N), ST-18, ST-20, ST-22 (claim flag), ST-26 (operations and events).
+- **Covers:** ST-6 (auto-advance, advance claim, N, `setR` validation), ST-18, ST-20, ST-22 (claim flag), ST-26 (operations and events).
 - **Interfaces:**
   - `StatsService` operations:
     - read values; `addXp`; `setValues`;
@@ -225,6 +226,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - several levels at once grant points per level;
   - auto-advance follows ST-6 and stops after a claim;
   - `setN` changes the advance interval;
+  - `setR` with a value that [ST-6](PRD.md#72-xp-and-cost) rejects keeps the previous value and logs the rejection;
   - events fire in the right order with the right payloads;
   - unspent points stay pending.
 - **Depends on:** C4, C5, C6.
