@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Trials of Mastery Stats: actions table",
+  "description": "Check and training per action (ST-15, ST-16, ST-27). The module hooks the shipped actions; other mods register namespaced ones.",
+  "type": "object",
+  "propertyNames": {
+    "anyOf": [
+      {
+        "enum": [
+          "WeaponSwing", "BowDraw", "CrossbowLoad", "Hit", "StaffUse", "UnarmedHit", "Fighting", "DamageTaken",
+          "DiseaseRecovery", "PoisonResisted", "SpellCast", "Sprint", "OverencumberedWalk", "Trade", "Persuade",
+          "Intimidate", "Interaction", "Lockpicking", "Pickpocket", "Sneak", "Detection"
+        ]
+      },
+      { "$ref": "common.schema.json#/$defs/namespacedName" }
+    ]
+  },
+  "additionalProperties": { "$ref": "#/$defs/action" },
+  "$defs": {
+    "action": {
+      "type": "object",
+      "properties": {
+        "check": { "$ref": "#/$defs/check" },
+        "training": {
+          "description": "The stat XP of one use: a curve per stat over the action's input (weight, money value, ...).",
+          "$ref": "#/$defs/statCurves"
+        },
+        "_todo": { "$ref": "common.schema.json#/$defs/todo" }
+      },
+      "additionalProperties": false
+    },
+    "check": {
+      "description": "I = the sum of the stat and skill curves; result maps I to the game quantity.",
+      "type": "object",
+      "properties": {
+        "stats": {
+          "description": "A curve per stat over the effective stat.",
+          "$ref": "#/$defs/statCurves"
+        },
+        "skills": {
+          "description": "A curve per skill over the skill level.",
+          "type": "object",
+          "propertyNames": { "$ref": "common.schema.json#/$defs/skillName" },
+          "additionalProperties": { "$ref": "common.schema.json#/$defs/curve" }
+        },
+        "result": { "$ref": "common.schema.json#/$defs/curve" },
+        "_todo": { "$ref": "common.schema.json#/$defs/todo" }
+      },
+      "required": ["result"],
+      "additionalProperties": false
+    },
+    "statCurves": {
+      "type": "object",
+      "propertyNames": { "$ref": "common.schema.json#/$defs/statName" },
+      "additionalProperties": { "$ref": "common.schema.json#/$defs/curve" }
+    }
+  }
+}

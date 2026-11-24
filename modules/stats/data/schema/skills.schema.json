@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Trials of Mastery Stats: skills table",
+  "description": "The skill-to-stat mapping (ST-14, ST-16, ST-27): on a skill level-up, the stat XP equals the level reached, split between the primary and the secondary stat.",
+  "type": "object",
+  "propertyNames": { "$ref": "common.schema.json#/$defs/skillName" },
+  "additionalProperties": { "$ref": "#/$defs/skill" },
+  "$defs": {
+    "skill": {
+      "type": "object",
+      "properties": {
+        "primary": { "$ref": "common.schema.json#/$defs/statName" },
+        "secondary": { "$ref": "common.schema.json#/$defs/statName" },
+        "primaryShare": {
+          "description": "The share of the XP that goes to the primary stat; the secondary stat gets the rest.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "_todo": { "$ref": "common.schema.json#/$defs/todo" }
+      },
+      "required": ["primary", "secondary", "primaryShare"],
+      "additionalProperties": false
+    }
+  }
+}

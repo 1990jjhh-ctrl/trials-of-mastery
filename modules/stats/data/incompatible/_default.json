@@ -1,0 +1,64 @@
+{
+  "Requiem": {
+    "plugins": [
+      "Requiem.esp"
+    ]
+  },
+  "Skyrim Attributes Mod.": {
+    "plugins": [
+      "SkyrimAttributesMod.esp"
+    ],
+    "sksePlugins": [
+      "SkyrimAttributesMod.dll"
+    ]
+  },
+  "CARE": {
+    "plugins": [
+      "Core Attribute Remaster & Expansion.esp"
+    ],
+    "sksePlugins": [
+      "CARE.dll"
+    ]
+  },
+  "Alternate Stat System": {
+    "plugins": [
+      "AlternateStatSystem.esp"
+    ]
+  },
+  "SkyRem Grace": {
+    "plugins": [
+      "SkyRem - Grace.esp"
+    ]
+  },
+  "Roleplaying in Skyrim - Stats": {
+    "plugins": [
+      "RoleRim - Stats.esp"
+    ]
+  },
+  "Skyrim Skill Uncapper": {
+    "sksePlugins": [
+      "SkyrimUncapper.dll"
+    ]
+  },
+  "Incremental Injuries": {
+    "plugins": [
+      "IncrementalInjuries.esp"
+    ],
+    "sksePlugins": [
+      "IncrementalInjuries.dll"
+    ]
+  },
+  "Exhaustion - Incremental Fatigue": {
+    "plugins": [
+      "exhaustion_incremental_fatigue.esp"
+    ]
+  },
+  "Valhalla Combat": {
+    "plugins": [
+      "ValhallaCombat.esp"
+    ],
+    "sksePlugins": [
+      "ValhallaCombat.dll"
+    ]
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Trials of Mastery Stats: shared definitions",
+  "description": "Definitions that the table schemas share. The merge rules are in docs/PRD.md#4-shared-constraints.",
+  "$defs": {
+    "todo": {
+      "description": "Marks a placeholder value, naming the open question, e.g. \"TODO(OQ-2): ...\". The module logs every marker at load.",
+      "type": "string"
+    },
+    "int32": {
+      "description": "An integer; 10.0 counts as 10.",
+      "type": "integer",
+      "minimum": -2147483648,
+      "maximum": 2147483647
+    },
+    "namespacedName": {
+      "description": "A name added by another mod: <Mod>:<Name> (ST-27).",
+      "type": "string",
+      "pattern": "^[^:]+:[^:]+$"
+    },
+    "coreStat": {
+      "enum": ["STR", "DEX", "CON", "INT", "WIS", "PER", "END", "CHA"]
+    },
+    "statName": {
+      "description": "A core stat or a namespaced registered stat. It must have an entry in the stats table.",
+      "anyOf": [{ "$ref": "#/$defs/coreStat" }, { "$ref": "#/$defs/namespacedName" }]
+    },
+    "vanillaSkill": {
+      "enum": [
+        "OneHanded", "TwoHanded", "Archery", "Block", "Smithing", "HeavyArmor", "LightArmor", "Pickpocket", "Lockpicking",
+        "Sneak", "Alchemy", "Speech", "Alteration", "Conjuration", "Destruction", "Illusion", "Restoration", "Enchanting"
+      ]
+    },
+    "skillName": {
+      "description": "A vanilla skill or a namespaced skill of another mod.",
+      "anyOf": [{ "$ref": "#/$defs/vanillaSkill" }, { "$ref": "#/$defs/namespacedName" }]
+    },
+    "curve": {
+      "description": "A curve of docs/PRD.md#41-curves.",
+      "oneOf": [
+        { "$ref": "#/$defs/linearCurve" },
+        { "$ref": "#/$defs/powerCurve" },
+        { "$ref": "#/$defs/asymptoticCurve" }
+      ]
+    },
+    "linearCurve": {
+      "type": "object",
+      "properties": {
+        "curve": { "const": "linear" },
+        "a": { "type": "number" },
+        "b": { "type": "number" },
+        "_todo": { "$ref": "#/$defs/todo" }
+      },
+      "required": ["curve", "a", "b"],
+      "additionalProperties": false
+    },
+    "powerCurve": {
+      "type": "object",
+      "properties": {
+        "curve": { "const": "power" },
+        "alpha": { "type": "number" },
+        "lambda": { "type": "number" },
+        "_todo": { "$ref": "#/$defs/todo" }
+      },
+      "required": ["curve", "alpha", "lambda"],
+      "additionalProperties": false
+    },
+    "asymptoticCurve": {
+      "type": "object",
+      "properties": {
+        "curve": { "const": "asymptotic" },
+        "S": { "type": "number" },
+        "E": { "type": "number" },
+        "c": { "type": "number" },
+        "_todo": { "$ref": "#/$defs/todo" }
+      },
+      "required": ["curve", "S", "E", "c"],
+      "additionalProperties": false
+    }
+  }
+}

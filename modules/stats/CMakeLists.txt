@@ -29,6 +29,8 @@ if(TOM_BUILD_TESTS)
         tests/unit/actor_stats_test.cpp
         tests/unit/curve_parse_test.cpp
         tests/unit/curve_test.cpp
+        tests/unit/default_tables_test.cpp
+        tests/unit/json_schema.cpp
         tests/unit/settings_test.cpp
         tests/unit/stat_registry_test.cpp
         tests/unit/stat_value_test.cpp

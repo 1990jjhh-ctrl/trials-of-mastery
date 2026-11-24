@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Trials of Mastery Stats: stats table",
+  "description": "Group, default base, race adjustments and effects per stat (ST-3, ST-9, ST-21, ST-27). Every core stat needs an entry.",
+  "type": "object",
+  "propertyNames": { "$ref": "common.schema.json#/$defs/statName" },
+  "additionalProperties": { "$ref": "#/$defs/stat" },
+  "$defs": {
+    "stat": {
+      "type": "object",
+      "properties": {
+        "group": {
+          "description": "The stat box group (ST-21). A stat without a group is in \"Other\".",
+          "type": "string",
+          "minLength": 1
+        },
+        "base": {
+          "description": "The default base (ST-3).",
+          "$ref": "common.schema.json#/$defs/int32"
+        },
+        "raceAdjustments": {
+          "description": "Relative adjustments of the base, keyed by the race's editor ID, e.g. \"NordRace\" (ST-3). Races without an entry get none.",
+          "type": "object",
+          "additionalProperties": { "$ref": "common.schema.json#/$defs/int32" }
+        },
+        "effects": {
+          "description": "The stat's effects, keyed by a name of the file's choice.",
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/effect" }
+        },
+        "_todo": { "$ref": "common.schema.json#/$defs/todo" }
+      },
+      "required": ["base"],
+      "additionalProperties": false
+    },
+    "effect": {
+      "description": "An actor-value effect (ST-10) or a named effect of the module (ST-11 to ST-13), with its curve.",
+      "type": "object",
+      "properties": {
+        "actorValue": {
+          "description": "The actor value as the game names it, e.g. \"Health\".",
+          "type": "string",
+          "minLength": 1
+        },
+        "named": {
+          "enum": ["CritChancePhysical", "CritChanceMagic", "LearningSpeed", "DamageRedirection", "MagicDamage"]
+        },
+        "curve": { "$ref": "common.schema.json#/$defs/curve" },
+        "_todo": { "$ref": "common.schema.json#/$defs/todo" }
+      },
+      "required": ["curve"],
+      "oneOf": [{ "required": ["actorValue"] }, { "required": ["named"] }],
+      "additionalProperties": false
+    }
+  }
+}

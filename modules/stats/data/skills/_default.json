@@ -1,0 +1,110 @@
+{
+  "OneHanded": {
+    "primary": "STR",
+    "secondary": "DEX",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  },
+  "TwoHanded": {
+    "primary": "STR",
+    "secondary": "END",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  },
+  "Block": {
+    "primary": "END",
+    "secondary": "STR",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  },
+  "HeavyArmor": {
+    "primary": "END",
+    "secondary": "CON",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  },
+  "LightArmor": {
+    "primary": "DEX",
+    "secondary": "END",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  },
+  "Archery": {
+    "primary": "DEX",
+    "secondary": "PER",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  },
+  "Sneak": {
+    "primary": "DEX",
+    "secondary": "PER",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  },
+  "Lockpicking": {
+    "primary": "DEX",
+    "secondary": "PER",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  },
+  "Pickpocket": {
+    "primary": "DEX",
+    "secondary": "PER",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  },
+  "Alchemy": {
+    "primary": "INT",
+    "secondary": "WIS",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  },
+  "Enchanting": {
+    "primary": "INT",
+    "secondary": "WIS",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  },
+  "Destruction": {
+    "primary": "WIS",
+    "secondary": "INT",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  },
+  "Conjuration": {
+    "primary": "WIS",
+    "secondary": "INT",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  },
+  "Alteration": {
+    "primary": "INT",
+    "secondary": "WIS",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  },
+  "Illusion": {
+    "primary": "WIS",
+    "secondary": "PER",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  },
+  "Restoration": {
+    "primary": "WIS",
+    "secondary": "CON",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  },
+  "Speech": {
+    "primary": "CHA",
+    "secondary": "WIS",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  },
+  "Smithing": {
+    "primary": "STR",
+    "secondary": "INT",
+    "primaryShare": 0.75,
+    "_todo": "TODO(OQ-3): placeholder split, 3:1 or 2:1; the default mapping is a draft"
+  }
+}
