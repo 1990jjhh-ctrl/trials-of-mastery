@@ -12,6 +12,14 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels the run for its older head, so
+# force-pushes don't queue up full cross builds. Every other run gets its own
+# group (the run ID), so runs on main are never cancelled or queued behind
+# each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   commits:
     name: Commit messages (gitlint)
