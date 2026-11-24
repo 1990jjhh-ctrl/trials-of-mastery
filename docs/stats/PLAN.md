@@ -121,11 +121,16 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 - **Interfaces:**
   - `PluginQuery` (abstract: active plugins in load order, with name and extension).
   - `TableSource` (file name plus text, and whether it is a mod patch from `plugins/`). A filesystem enumerator is a thin helper on top.
-  - `mergeTable(sources, PluginQuery&, registered) -> MergeResult { json merged; vector<Diagnostic> }`, with the API-registered entries as the lowest layer (assumption 3). Diagnostics cover file order, conflicts, removed keys, warnings for same-name plugins and skipped invalid files.
+  - `mergeTable(sources, PluginQuery&, registered) -> MergeResult { json merged; vector<Diagnostic> diagnostics; map<pointer, Origin> origins }`, with the API-registered entries as the lowest layer (assumption 3). Diagnostics cover file order, conflicts, removed keys, warnings for same-name plugins and skipped invalid files.
+  - Entry validation per file ([§9 Broken patches](PRD.md#9-risks)): `mergeTable` and `loadTableFolder` take an optional `EntryValidator`, a function `(entry name, entry after merging this file) -> optional<reason>` that C3 supplies per table. Each file is merged into a staged copy of all merge state: the merged JSON, the origins, the patch owners of each key (the `Merger`'s `owners_`) and the file's `Loaded`, `Conflict` and `Removed` diagnostics. The validator runs on every top-level entry the file sets and does not remove with `null`. If one entry fails, all of the staged state is dropped together, so the whole file is skipped as if it had never been read, and a new `Diagnostic::Kind::InvalidEntry` names the file, the entry's JSON pointer and the reason. Otherwise the staged state is committed. Because the validator sees the entry after the merge, a patch may set single fields of an existing entry, but an entry it adds must be complete. API-registered entries are checked the same way when they are registered (A1), not here.
+  - The merge engine already exists (`modules/stats/core/include/tom/stats/core/table_merge.h`). The validator is an amendment to it with a default of "accept all", so current callers and tests stay unchanged.
 - **Verification:** `unit`, one test per rule in the overview, including:
   - same-name plugins: the file loads at the last of them and a warning is logged;
   - overriding the default file is not reported as a conflict;
-  - an invalid file is skipped and the remaining files still load.
+  - an invalid file is skipped and the remaining files still load;
+  - a file with one invalid entry and one valid entry is skipped as a whole, with an `InvalidEntry` diagnostic, and the files after it still load;
+  - a patch that sets one valid field of an existing entry loads; a patch that adds an incomplete entry, or removes a required field with `null`, is skipped;
+  - a file after a skipped file that sets the same key reports no conflict and gets that key's origin; the skipped file leaves no `Loaded`, `Conflict` or `Removed` diagnostic.
 - **Depends on:** T1.1. **Parallel** with C1, C4.
 
 #### C3 Settings and tables
@@ -139,8 +144,9 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - `SkillsTable`: per skill, the primary stat, secondary stat and split.
   - `ActionsTable`: per action, the check inputs with curves, the output mapping (assumption 7) and the training curves per stat.
   - `IncompatibleTable`: per entry, the game plugin names and SKSE plugin names to detect.
-  - `loadSettings(text)` and `buildTables(MergeResult...) -> expected<Tables, Errors>`.
-  - Names added by other mods are checked against the namespacing rule of ST-27.
+  - One `EntryValidator` per table (C2) that checks an entry's fields, types, curves and value ranges (for example, integer bases). Names added by other mods are checked against the namespacing rule of ST-27 here as well. These validators are where invalid entries are found; `buildTables` gets only merges whose files passed them.
+  - The validators check an entry in itself only. Whether a stat it names exists is not their concern; `buildTables` handles that.
+  - `loadSettings(text)` and `buildTables(MergeResult...) -> expected<Tables, Errors>`. `buildTables` converts the merged JSON to the typed tables. A skills or actions entry that names a stat no layer of the stats table defines is dropped on its own and logged with the files that set it (from `MergeResult::origins`, empty for an API registration); its file and the rest of the table still load ([§9](PRD.md#9-risks)).
 - **Placeholders:**
   - Values: effect coefficients (OQ-2), the split ratio (OQ-3), learning-speed curves (OQ-4), check weights and output mappings (OQ-5), redirection share (OQ-6), direct activity XP (OQ-7).
   - The incompatible default lists Requiem plus a starter set of known RPG stat mods, marked "to be verified" (see [§7.9](PRD.md#79-compatibility)).
@@ -148,7 +154,8 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 - **Verification:** `unit` tests check that:
   - the shipped defaults parse and validate against the schemas;
   - they contain the default mapping and groups of [ST-27](PRD.md#78-configuration);
-  - invalid entries are reported with file and key;
+  - each validator rejects a wrong type, a missing required field, an unknown curve and a non-namespaced mod name, and a file with such an entry is skipped as a whole with file and key in the diagnostic ([§9](PRD.md#9-risks));
+  - a skills or actions entry that names an undefined stat (never defined, or removed by a later stats patch, or from an API registration) is dropped and logged with its files, while the other entries of its file and the rest of the table load;
   - INI defaults are loaded when keys are missing;
   - an INI value of `r` that [ST-6](PRD.md#72-xp-and-cost) rejects is logged and replaced by the built-in default, the same one used for a missing key (at load, that default is the previous value).
 - **Depends on:** C1, C2. **Sequential.**
@@ -432,9 +439,9 @@ Three tasks, all after S6b and C6, each **parallel**:
 - **Interfaces:**
   - An interface struct with a version number, handed out through the SKSE messaging interface on request.
   - Its functions map one to one onto `StatsService`, and event callbacks are registered per event type.
-  - Registrations are accepted until `kDataLoaded` and merged per assumption 3.
+  - Registrations are accepted until `kDataLoaded` and merged per assumption 3. Each registered table entry (stat, skill mapping, action) first runs through the C3 validator of its table; an entry invalid in itself (a wrong type, a missing field, an unknown curve) is rejected, the call returns an error and the rejection is logged ([§9](PRD.md#9-risks)). An entry that names an undefined stat is accepted here and dropped by `buildTables` like any other (C3).
   - Calls are allowed only on the main thread, and the header documents this.
-- **Verification:** `unit` for the version check and argument validation in the core part. A3 does the end-to-end check.
+- **Verification:** `unit` for the version check and argument validation in the core part, including a registered entry that its C3 validator rejects: the call fails, the rejection is logged and the entry does not reach the merge; a registered skill mapping naming an undefined stat is accepted and later dropped by `buildTables`. A3 does the end-to-end check.
 - **Depends on:** C7, G1.
 
 #### A2 Papyrus API
