@@ -5,7 +5,9 @@
 SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
 	// Opens Documents/My Games/Skyrim Special Edition/SKSE/<plugin name>.log.
-	SKSE::Init(a_skse);
+	// The trampoline holds a 14-byte jump for each of the level-up hook's two
+	// 5-byte calls.
+	SKSE::Init(a_skse, { .trampoline = true, .trampolineSize = 28 });
 	SKSE::log::info("{} {} loading on Skyrim {}", SKSE::GetPluginName(),
 		SKSE::GetPluginVersion().string("."), a_skse->RuntimeVersion().string("."));
 
