@@ -88,7 +88,7 @@ Requirement IDs use the prefix ST and run in document order.
 ### 7.1 Stats
 
 - ST-1: The module provides the eight core stats.
-- ST-2: Other modules can register additional stats through the API. A registered stat gets XP, the cost formula, effects, display and the level-up prompt like a core stat. Its effects come from its entry in the stats file (ST-9) or are implemented by the module that registers it.
+- ST-2: Other modules can register additional stats through the API. A registered stat gets XP, the cost formula, effects, display and the level-up prompt like a core stat; the registering module can opt it out of free level-up points (ST-20, ST-21). Its effects come from its entry in the stats file (ST-9) or are implemented by the module that registers it.
 - ST-3: Each stat has a default base, set in the stats file (10 for every core stat); a registered stat's default base is set by the module that registers it. An actor's base is the default base plus relative adjustments: one per race, set in the stats file, and one per source registered through the API, for example a class from the professions module. Adjustments add up: a race's +1 and a class's −2 on the same stat give −1. Adding or removing an adjustment later moves the start value together with the base, so pools don't change, apart from the realm multiplier's scaling (ST-8, MA-3).
 - ST-4: Stats exist for every actor. Only the player trains stats; other modules set NPC values through the API (no per-NPC training).
 
@@ -149,7 +149,7 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, detection, sp
 - ST-18: The module does not decide when a level-up happens. It reacts to every player level-up, whether vanilla, Experience or another mod triggered it.
 - ST-19: The stat box replaces the vanilla level-up menu, and the +10 Health/Magicka/Stamina reward is never granted. The stat box opens at the moment the vanilla level-up menu would open. The level-up itself (level and perk point) is applied right away; only spending the free points can wait.
 - ST-20: Each level-up grants free stat points; the number is set in the INI (default 3). Free points go to the accumulated points and do not raise the cost of trained points.
-- ST-21: While free points are unspent, the stat box shows "Level Up" and "Cancel" instead of "OK". "Cancel" closes the box and keeps the points for later; they are stored in the save. "Level Up" shows the number of free points and one button per stat with its current value, plus "Back", and repeats until all points are spent or the player goes back. Registered stats appear like core stats. When the stats and "Back" do not fit in one box, the box first shows one button per stat group, and each group shows its stats. Each stat belongs to a group, set in the stats file.
+- ST-21: While free points are unspent, the stat box shows "Level Up" and "Cancel" instead of "OK". "Cancel" closes the box and keeps the points for later; they are stored in the save. "Level Up" shows the number of free points and one button per stat with its current value, plus "Back", and repeats until all points are spent or the player goes back. Registered stats appear like core stats, unless they are opted out of free points (ST-2). When the stats and "Back" do not fit in one box, the box first shows one button per stat group, and each group shows its stats. Each stat belongs to a group, set in the stats file.
 - ST-22: Another module can take over point assignment through the API. The stat box then shows only "OK", and that module distributes the points (the professions module does this by class profile).
 - ST-23: Perk points stay as in vanilla.
 
@@ -194,7 +194,7 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, detection, sp
 | Lockpicking | DEX, PER | Speech | CHA, WIS |
 | Pickpocket | DEX, PER | Smithing | STR, INT |
 
-Default stat groups, named after the guardian stones: Warrior (STR, CON, END), Mage (INT, WIS), Thief (DEX, PER), Other (CHA and registered stats that name no group, such as the luck module's `Luck:LUC`).
+Default stat groups, named after the guardian stones: Warrior (STR, CON, END), Mage (INT, WIS), Thief (DEX, PER), Other (CHA and registered stats that name no group).
 
 Once the JSON files exist, they hold the values and this section only describes them. Names of stats, skills and actions added by other mods are namespaced (`<Mod>:<Name>`).
 
