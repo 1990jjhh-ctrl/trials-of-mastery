@@ -73,7 +73,7 @@ Out of scope:
 | Effective stat | `(base + accumulated + active) · multiplier + modifier`; all effects use it |
 | Advance | Moving a stat's active points into its accumulated points, which resets the cost to 100 |
 | Ascend | Converting a stat's accumulated and active points into base with a formula from the caller |
-| Start value | An actor's base at character creation, moved by later base adjustments (ST-3); the reference for actor-value effects (ST-10) |
+| Start value | An actor's base at character creation, moved by later base adjustments and default-base changes (ST-3); the reference for actor-value effects (ST-10) |
 | `k` | The number of active points; the exponent of the cost formula |
 | `r` | Growth factor of the cost formula |
 | Stat box | The message box that shows the stats and handles level-ups (ST-21, ST-24) |
@@ -89,7 +89,7 @@ Requirement IDs use the prefix ST and run in document order.
 
 - ST-1: The module provides the eight core stats.
 - ST-2: Other modules can register additional stats through the API. A registered stat gets XP, the cost formula, effects, display and the level-up prompt like a core stat; the registering module can opt it out of free level-up points (ST-20, ST-21). Its effects come from its entry in the stats file (ST-9) or are implemented by the module that registers it.
-- ST-3: Each stat has a default base, set in the stats file (10 for every core stat); a registered stat's default base is set by the module that registers it. An actor's base is the default base plus relative adjustments: one per race, set in the stats file, and one per source registered through the API, for example a class from the professions module. Adjustments add up: a race's +1 and a class's −2 on the same stat give −1. Adding or removing an adjustment later moves the start value together with the base, so pools don't change, apart from the realm multiplier's scaling (ST-8, MA-3).
+- ST-3: Each stat has a default base, set in the stats file (10 for every core stat); a registered stat's default base is set by the module that registers it. An actor's base is the default base plus relative adjustments: one per race, set in the stats file, and one per source registered through the API, for example a class from the professions module. Adjustments add up: a race's +1 and a class's −2 on the same stat give −1. Adding or removing an adjustment later moves the start value together with the base, so pools don't change, apart from the realm multiplier's scaling (ST-8, MA-3). A default base that a later patch changes applies to existing actors the same way, as the difference to the default base last applied to them.
 - ST-4: Stats exist for every actor. Only the player trains stats; other modules set NPC values through the API (no per-NPC training).
 
 ### 7.2 XP and cost
@@ -175,7 +175,7 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, detection, sp
 ### 7.8 Configuration
 
 - ST-27: The INI holds only single settings: `r` (ST-6, default 2, which equals the mastery module's `r_N` (MA-1) at 0 Ascensions), N (ST-6, default 5), free points per level-up, the stat box key and the override of ST-28. Tables live in four JSON files, which players and other mods patch by the merge rules in the [overview](../PRD.md#4-shared-constraints):
-  - stats: group, default base, race adjustments and effects per stat;
+  - stats: group, default base, race adjustments (keyed by the race's editor ID) and effects per stat;
   - skills: the skill-to-stat mapping and the primary to secondary split;
   - actions: checks and training per action;
   - incompatible: the mods ST-28 detects, by plugin or SKSE plugin name.
@@ -222,14 +222,14 @@ Status levels and domain ownership are defined in the [overview](../PRD.md#5-com
 ## 8. Constraints
 
 - SKSE C++ plugin for stats, XP, effects, the stat box and the API; a compiled Papyrus script for the Papyrus API. No ESP.
-- Stats, start values, XP, accumulated and active points, modifiers, base adjustments, `r`, multipliers, pool contributions, unspent free points and registered stats are stored per save in the SKSE co-save and survive save/load.
+- Stats, start values, XP, accumulated and active points, modifiers, base adjustments, `r`, multipliers, pool contributions, the default base last applied to each stat, unspent free points and registered stats are stored per save in the SKSE co-save and survive save/load.
 
 ## 9. Risks
 
 - **Discoverability:** the stat box opens only by key in the skills menu or on a level-up. Accepted: Trials of Mastery players get the box on every level-up, and the key is in the mod description.
 - **Level-up interception:** replacing the vanilla level-up menu must work with Experience and with mods that change that menu; otherwise level-ups lose their points or show both menus.
 - **Balance:** coefficients, check weights, the learning-speed ceiling (×3), the cost growth and N need playtesting; all are config values.
-- **Broken patches:** players edit the JSON files by hand. An invalid file, or a file with an invalid entry, is skipped and logged, and the remaining files still load.
+- **Broken patches:** players edit the JSON files by hand. An invalid file, or a file with an invalid entry, is skipped and logged, and the remaining files still load. An entry that names a stat no layer defines (for example one a later patch removed) is dropped and logged on its own. A race adjustment for a race no loaded plugin defines is ignored, since no actor can have that race; it is logged at debug level only. An API entry that is invalid in itself (a wrong type, a missing field, an unknown curve) is rejected and logged at registration; one that names an undefined stat is handled as above.
 - **Grind:** stat XP can be farmed (swings, hits, damage, casts, weights). This is accepted by design, as training in the real world is repetition. The mitigations are small XP amounts, exponentially rising costs and the class modifiers, with no rate limits.
 
 ## 10. Open questions
