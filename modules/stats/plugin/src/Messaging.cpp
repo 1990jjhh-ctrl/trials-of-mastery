@@ -1,5 +1,7 @@
 #include "Messaging.h"
 
+#include "LevelUpHook.h"
+
 #include <cstdint>
 #include <string_view>
 
@@ -38,6 +40,13 @@ std::string_view messageName(std::uint32_t type)
 void onMessage(Messaging::Message* message)
 {
 	SKSE::log::info("SKSE message {} ({})", messageName(message->type), message->type);
+	if (message->type != Messaging::kDataLoaded) {
+		return;
+	}
+	registerLevelUpDiagnostics();
+	if (!installLevelUpHook()) {
+		SKSE::log::error("The vanilla LevelUp menu is not replaced");
+	}
 }
 }
 

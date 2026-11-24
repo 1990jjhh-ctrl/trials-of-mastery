@@ -266,6 +266,41 @@ Each spike is a throwaway prototype in the plugin with a time box. Its result is
 | S7 | How does the module learn about Custom Skills Framework skill level-ups (ST-16)? Do skill level-up events still fire above 100 with Beyond Mastery and Experience? | G4 |
 | S8 | Papyrus build with the Creation Kit compiler under Wine (D5). This starts from the current error "Wine Mono is not installed": installing Wine Mono or .NET in the Wine prefix is a **user action**. Then compile a stub script with a native function from a CMake custom command, with the Skyrim path as a cache variable, and bind it from the plugin. | A2 |
 
+#### S1 result
+
+Run on 2026-11-24 on 1.7.104 with the test install's Experience, through the skyrim-mcp bridge in `qasmoke`. **Suppression works; the revert fallback is not needed.** The prototype is `modules/stats/plugin/src/LevelUpHook.cpp`.
+
+How vanilla levels up (disassembly of `SkyrimSE.exe` 1.7.104; Address Library IDs are AE):
+
+- Reaching the XP threshold only shows "Level up" on the HUD. The level-up itself happens in `StatsMenu::ProcessMessage` (52510) on a menu update, while the skills menu is open and `PlayerSkills::CanLevelUp` holds (XP at or above the threshold). In order, it:
+  1. shows the "Leveling Up" tutorial once per save (52692 with tutorial `0xFA`, call at +0xFFA);
+  2. raises the level and sends `LevelIncrease::Event` (41566);
+  3. queues the LevelUp menu (51916, call at +0x1012);
+  4. adds one perk point (52538).
+- Confirming an attribute (`ConfirmLevelUpAttributeCallback::Run`, 51917) adds the +10 (`iAVDhmsLevelUp`; Stamina also raises carry weight by `fLevelUpCarryWeightMod`), then calls `PlayerSkills::AdvanceLevel(false)` (41567). That takes the threshold off the XP and computes the next threshold. If the XP still covers it, the next menu update repeats the flow.
+- So the moment the LevelUp menu would open is when the skills menu opens with a level-up pending, and at that moment the level and the perk point are already applied by vanilla code.
+
+The hook:
+
+- Replaces the call at 52510+0x1012 with a function that calls `AdvanceLevel(false)` through the confirm callback's own call, not 41567 directly, because Experience redirects that call. The call target is read again on each level-up.
+- Replaces the tutorial call at 52510+0xFFA with a no-op, since that tutorial asks the player to choose Health, Magicka or Stamina.
+- Finds each site by scanning for exactly one call to the known target. The confirm callback's call is the one after `mov rcx, [rax + offset of PlayerCharacter::skills]`, with the offset taken from CommonLibSSE-NG's layout at runtime (0x9C0 on 1.7.99 and later). If a site is not found, for example because another plugin patched it, nothing is patched and the log says why.
+
+Evidence (plugin log, console `player.getlevel` and `player.getbaseav`, screenshots), from the build before the review fixes (runtime skills offset, target re-read):
+
+| Run | Result |
+| --- | --- |
+| Hook not installed (baseline), Experience `player.advlevel 500` | Skills menu: `LevelIncrease` to 2, then the LevelUp menu opens with level 2, perk points 1, XP 501/100. Choosing Stamina: Stamina 105 to 115, XP 401/125, and the next LevelUp menu opens at once. The "Leveling Up" tutorial shows first. |
+| Hook, Experience `player.advlevel 500` | Three level-ups in one menu opening, each finished by the hook. Level 1 to 4, "Perks to increase: 3", XP 500/100 to 125/175. Health 110, Magicka 85, Stamina 105, carry weight 325 unchanged. No LevelUp menu. The tutorial still showed (fixed in the next run). |
+| Hook with the tutorial patch, Experience skill XP (`bEnableSkillXP = true`, `player.advskill` on six skills) | Level 1 to 9 within about 0.3 s, "Perks to increase: 8", Health, Magicka, Stamina and carry weight unchanged, no LevelUp menu and no tutorial. No crash log. |
+
+Not covered:
+
+- **The game without Experience:** the test install always loads it; a run with `Experience.dll` shadowed by an empty file never got past startup. Experience's skill-XP mode stands in for the vanilla XP source.
+- **Level-up menu mods:** none is installed. A mod that only replaces `levelupmenu.swf` is never shown. A plugin that patches the same calls makes the scan fail, so the hook stays out (K1 or a compatibility note).
+- **1.6.x:** untested. Nothing is tied to a 1.7.x layout or offset: the IDs are AE IDs, the call offsets come from the scan and the skills offset from CommonLibSSE-NG (0x9B8 before 1.7.99). Whether the 1.6.x functions keep the same instruction shapes is not checked.
+- **Level changes outside this flow:** `player.setlevel` (41563) and the vanilla `AdvancePCLevel` set the level directly, without `LevelIncrease`, a perk point or a menu. `UpdateLevel` (22369) runs 41566 and `AdvanceLevel` in a loop, so it sends `LevelIncrease` but grants no perk point. ST-18 does not say whether these count as level-ups.
+
 ### Phase 4: Game layer (`modules/stats/plugin/`)
 
 #### G1 Configuration loading in game
@@ -308,12 +343,12 @@ Each spike is a throwaway prototype in the plugin with a time box. Its result is
 
 - **Goal:** react to every player level-up, grant free points, auto-advance, suppress the vanilla reward and open the stat box at the moment found by S1.
 - **Covers:** ST-6 (auto-advance in game), ST-18, ST-19, ST-20, ST-23, success criterion 1.
-- **Interfaces:** a level-increase sink and the S1 hook. It calls `onPlayerLevelUp` and asks U1 to open the box.
+- **Interfaces:** the hook from the [S1 result](#s1-result), which replaces the LevelUp menu and its tutorial. Each call of its replacement function is one level-up: it calls `onPlayerLevelUp` with the level the skills menu just set, and asks U1 to open the box. Several pending level-ups run in consecutive menu updates, so G5 collects them and opens one box after the last. The perk point is added right after the replaced call, so it is not yet in `perkCount` inside it.
 - **Verification:** `in-game` for:
   - success criterion 1, with vanilla leveling and with Experience;
   - the perk point arriving right away;
   - advancing at multiples of N;
-  - no vanilla menu, with and without a level-up menu mod.
+  - no vanilla menu and no "Leveling Up" tutorial, with and without a level-up menu mod.
 - **Depends on:** S1, G2. U1 is needed for the box, but G5 can be checked by log first.
 
 #### G6 Learning speed and skill XP modifiers
@@ -459,7 +494,7 @@ Three tasks, all after S6b and C6, each **parallel**:
   Checked in game on 2026-11-23 with the skyrim-mcp bridge (run in `qasmoke`): SKSE reports the plugin as loaded correctly on 1.7.104.0, and its log has the version line and `kPostLoad`, `kPostPostLoad`, `kInputLoaded`, `kDataLoaded`, then `kSaveGame`, `kPreLoadGame` and `kPostLoadGame` for a console save and load. `kNewGame` was not exercised, since `coc` from the main menu does not start a new game.
 - **Cross build:** CommonLibSSE-NG and the vcpkg ports must build with clang-cl and lld-link against xwin. Port build scripts that assume MSVC can fail. T1.1 showed that the CommonLibSSE-NG custom ports cover this (the directxtk shaders need Wine and llvm-mingw); for a new failing dependency the fallback is to vendor it as a submodule.
 - **Papyrus under Wine (S8):** this is blocked until Wine Mono or .NET is installed in the prefix. If the compiler still fails, A2 is blocked; fallback: revisit D5 (Caprica).
-- **S1 fails:** if the LevelUp menu cannot be suppressed cleanly, ST-19 and success criterion 1 need the revert fallback, or a PRD change. This is the highest-risk spike, so run it first.
+- **S1 fails:** if the LevelUp menu cannot be suppressed cleanly, ST-19 and success criterion 1 need the revert fallback, or a PRD change. This is the highest-risk spike, so run it first. Resolved: suppression works with Experience ([S1 result](#s1-result)). What is left: 1.6.x, level-up menu mods and the game without Experience are untested (the hook has no 1.7.x-only offset), and whether `setlevel`-style level changes count for ST-18 is open.
 - **Check hooks (S6b):** persuasion and intimidation in vanilla are dialogue conditions on Speech, not a formula. Replacing them may need condition-function hooks, or may not be possible without an ESP, which the "no ESP" constraint rules out.
 - **Magic crit (S5):** vanilla has no spell crits. Adding them may need a damage hook that overlaps with S4 and with combat overhauls.
 - **NPC actor-value persistence:** permanent modifiers on non-persistent NPCs reset when the actor respawns, but the ledger in the co-save does not. G2 and G3 must reconcile this, and OQ-1 may change how much NPC data exists at all.
