@@ -8,7 +8,7 @@ Part of Trials of Mastery; see the [overview](../PRD.md) for the module split. T
 
 ## 1. Summary
 
-The professions module is a framework for classes. A class gives a character starting stats, a category, boost points and XP modifiers, and decides how level-up stat points are distributed. Classes are data, so players and patches can add them. The module builds on the [stat module](../stats/PRD.md) and uses only its API.
+The professions module is a framework for classes. A class gives a character starting stat adjustments, a category, boost points and XP modifiers, and decides how level-up stat points are distributed. Classes are data, so players and patches can add them. The module builds on the [stat module](../stats/PRD.md) and uses only its API.
 
 ## 2. Problem
 
@@ -42,7 +42,7 @@ Out of scope:
 
 | Term | Meaning |
 | --- | --- |
-| Class / Profession | Category, starting stats, main stats, boost points, XP modifiers, level stat boost profile and description |
+| Class / Profession | Category, starting stat adjustments, main stats, boost points, XP modifiers, level stat boost profile and description |
 | Category | Physical, Magic or Life. Every class belongs to one; a character holds at most one class per category |
 | Physical skills | One-Handed, Two-Handed, Archery, Block, Heavy Armor, Light Armor |
 | Magic skills | Destruction, Conjuration, Alteration, Illusion, Restoration |
@@ -53,7 +53,7 @@ Out of scope:
 
 Requirement IDs use the prefix PR and run in document order.
 
-- PR-1: Each class defines a category, starting stats, main stats (specialization, gain bonus), boost points, XP modifiers per skill and per action, the stat boosts granted per level, a description, and a flag "player-selectable".
+- PR-1: Each class defines a category, starting stat adjustments (relative to the default base, set through the stat module's API, ST-3), main stats (specialization, gain bonus), boost points, XP modifiers per skill and per action, the stat boosts granted per level, a description, and a flag "player-selectable".
 - PR-2: Every class belongs to exactly one category. A character holds at most one class per category.
 - PR-3: Every class has two boost points: a primary boost point giving +20 % XP on one skill and a secondary boost point giving +10 % XP. The player chooses when a class offers several options; NPCs roll their picks at random.
 - PR-4: The character's class modifies skill XP and the stat XP a skill gives per skill, and the stat XP an action gives per action, through the stat module's XP modifier hook (ST-17). All values are configurable. Individual stats are never penalized. The actions fighting, taking damage, overencumbered walking and sprinting have no class modifiers.
