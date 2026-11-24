@@ -236,13 +236,14 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
     - `setBaseAdjustment(actor, stat, key, value)` and `removeBaseAdjustment(actor, stat, key)` (ST-3, ST-26); the module's race key is rejected; the returned `AvDelta`s are empty at multiplier 1, since base and start value move together;
     - `setR` (one value per save, player only, see ST-6 and [§5](PRD.md#5-scope)); `setN`;
     - `claimAdvancing(owner)`; `advance` and `advanceAll`; `ascend`;
-    - `onPlayerLevelUp(newLevel)`;
+    - `onPlayerLevelUp(newLevel)`: exactly one real level-up, the game's own level-up flow (G5). It grants the free points of one level and advances when `newLevel` is a multiple of N (ST-6). It takes no previous level and computes no level difference, so a level change that bypassed the level-up (`setlevel` and the like) is never counted, neither as points nor as advancing (ST-18). G5 is its only caller;
     - `claimPointAssignment(owner)`; `assignFreePoint(stat)`, which rejects a stat opted out of free points (ST-2, ST-20), also for the module that claimed point assignment.
   - `EventSink` interface with the five ST-26 events.
   - A stat change returns the `AvDelta`s from C5.
 - **Verification:** `unit` tests check that:
   - free points from a level-up go to accumulated and do not change the cost;
-  - several levels at once grant points per level;
+  - several real level-ups in a row, one `onPlayerLevelUp` each, grant the points once per call;
+  - after a bypassed jump (the last call was for level 4, the next is for level 10), the call grants the points of one level only, and advances only because 10 is a multiple of N; a bypassed change to a multiple of N, with no call, advances nothing (ST-18);
   - auto-advance follows ST-6 and stops after a claim;
   - `setN` changes the advance interval;
   - `setR` with a value that [ST-6](PRD.md#72-xp-and-cost) rejects keeps the previous value and logs the rejection;
@@ -320,7 +321,7 @@ Not covered:
 - **The game without Experience:** the test install always loads it; a run with `Experience.dll` shadowed by an empty file never got past startup. Experience's skill-XP mode stands in for the vanilla XP source.
 - **Level-up menu mods:** none is installed. A mod that only replaces `levelupmenu.swf` is never shown. A plugin that patches the same calls makes the scan fail, so the hook stays out (K1 or a compatibility note).
 - **1.6.x:** untested. Nothing is tied to a 1.7.x layout or offset: the IDs are AE IDs, the call offsets come from the scan and the skills offset from CommonLibSSE-NG (0x9B8 before 1.7.99). Whether the 1.6.x functions keep the same instruction shapes is not checked.
-- **Level changes outside this flow:** `player.setlevel` (41563) and the vanilla `AdvancePCLevel` set the level directly, without `LevelIncrease`, a perk point or a menu. `UpdateLevel` (22369) runs 41566 and `AdvanceLevel` in a loop, so it sends `LevelIncrease` but grants no perk point. ST-18 does not say whether these count as level-ups.
+- **Level changes outside this flow:** `player.setlevel` (41563) and the vanilla `AdvancePCLevel` set the level directly, without `LevelIncrease`, a perk point or a menu. `UpdateLevel` (22369) runs 41566 and `AdvanceLevel` in a loop, so it sends `LevelIncrease` but grants no perk point. Per [ST-18](PRD.md#75-level-up) these bypass the level-up: they grant no free points and don't advance stats. Only the hook path counts, so G5 must not count `LevelIncrease` events.
 
 ### Phase 4: Game layer (`modules/stats/plugin/`)
 
@@ -363,12 +364,14 @@ Not covered:
 
 #### G5 Level-up handling
 
-- **Goal:** react to every player level-up, grant free points, auto-advance, suppress the vanilla reward and open the stat box at the moment found by S1.
+- **Goal:** react to every player level-up, grant free points, auto-advance, suppress the vanilla reward and open the stat box at the moment found by S1. Tell real level-ups apart from level changes that bypass the level-up (ST-18).
 - **Covers:** ST-6 (auto-advance in game), ST-18, ST-19, ST-20, ST-23, success criterion 1.
 - **Interfaces:** the hook from the [S1 result](#s1-result), which replaces the LevelUp menu and its tutorial. Each call of its replacement function is one level-up: it calls `onPlayerLevelUp` with the level the skills menu just set, and asks U1 to open the box. Several pending level-ups run in consecutive menu updates, so G5 collects them and opens one box after the last. The perk point is added right after the replaced call, so it is not yet in `perkCount` inside it.
+  - Only the hook's replacement function counts as a level-up. `LevelIncrease::Event` is not used to count level-ups, since `UpdateLevel` sends it without a perk point; `setlevel` and `AdvancePCLevel` send nothing. These bypassed changes call nothing in `StatsService` ([S1 result](#s1-result), ST-18).
 - **Verification:** `in-game` for:
   - success criterion 1, with vanilla leveling and with Experience;
   - the perk point arriving right away;
+  - `player.setlevel` to a higher level that is a multiple of N grants no free points, no perk point and no advance, and the next real level-up grants the points of one level;
   - advancing at multiples of N;
   - no vanilla menu and no "Leveling Up" tutorial, with and without a level-up menu mod.
 - **Depends on:** S1, G2. U1 is needed for the box, but G5 can be checked by log first.
@@ -453,7 +456,7 @@ Three tasks, all after S6b and C6, each **parallel**:
 - **Scope:** `modules/stats/include/tom/stats/api.h` (header only, no CommonLib types beyond forward-declared actors) and the plugin-side implementation.
 - **Interfaces:**
   - An interface struct with a version number, handed out through the SKSE messaging interface on request.
-  - Its functions map one to one onto `StatsService`, and event callbacks are registered per event type.
+  - Its functions map one to one onto `StatsService`, except `onPlayerLevelUp`, which G5 alone calls and the API does not expose (ST-18). Event callbacks are registered per event type.
   - Registrations are accepted until `kDataLoaded` and merged per assumption 3. Each registered table entry (stat, skill mapping, action) first runs through the C3 validator of its table; an entry invalid in itself (a wrong type, a missing field, an unknown curve) is rejected, the call returns an error and the rejection is logged ([§9](PRD.md#9-risks)). An entry that names an undefined stat is accepted here and dropped by `buildTables` like any other (C3).
   - Calls are allowed only on the main thread, and the header documents this.
 - **Verification:** `unit` for the version check and argument validation in the core part, including a registered entry that its C3 validator rejects: the call fails, the rejection is logged and the entry does not reach the merge; a registered skill mapping naming an undefined stat is accepted and later dropped by `buildTables`. A3 does the end-to-end check.
@@ -516,7 +519,7 @@ Three tasks, all after S6b and C6, each **parallel**:
   Checked in game on 2026-11-23 with the skyrim-mcp bridge (run in `qasmoke`): SKSE reports the plugin as loaded correctly on 1.7.104.0, and its log has the version line and `kPostLoad`, `kPostPostLoad`, `kInputLoaded`, `kDataLoaded`, then `kSaveGame`, `kPreLoadGame` and `kPostLoadGame` for a console save and load. `kNewGame` was not exercised, since `coc` from the main menu does not start a new game.
 - **Cross build:** CommonLibSSE-NG and the vcpkg ports must build with clang-cl and lld-link against xwin. Port build scripts that assume MSVC can fail. T1.1 showed that the CommonLibSSE-NG custom ports cover this (the directxtk shaders need Wine and llvm-mingw); for a new failing dependency the fallback is to vendor it as a submodule.
 - **Papyrus under Wine (S8):** this is blocked until Wine Mono or .NET is installed in the prefix. If the compiler still fails, A2 is blocked; fallback: revisit D5 (Caprica).
-- **S1 fails:** if the LevelUp menu cannot be suppressed cleanly, ST-19 and success criterion 1 need the revert fallback, or a PRD change. This is the highest-risk spike, so run it first. Resolved: suppression works with Experience ([S1 result](#s1-result)). What is left: 1.6.x, level-up menu mods and the game without Experience are untested (the hook has no 1.7.x-only offset), and whether `setlevel`-style level changes count for ST-18 is open.
+- **S1 fails:** if the LevelUp menu cannot be suppressed cleanly, ST-19 and success criterion 1 need the revert fallback, or a PRD change. This is the highest-risk spike, so run it first. Resolved: suppression works with Experience ([S1 result](#s1-result)). What is left: 1.6.x, level-up menu mods and the game without Experience are untested (the hook has no 1.7.x-only offset). `setlevel`-style level changes are settled by ST-18: they are not level-ups, and G5 counts only the hook path.
 - **Check hooks (S6b):** persuasion and intimidation in vanilla are dialogue conditions on Speech, not a formula. Replacing them may need condition-function hooks, or may not be possible without an ESP, which the "no ESP" constraint rules out.
 - **Magic crit (S5):** vanilla has no spell crits. Adding them may need a damage hook that overlaps with S4 and with combat overhauls.
 - **NPC actor-value persistence:** permanent modifiers on non-persistent NPCs reset when the actor respawns, but the ledger in the co-save does not. G2 and G3 must reconcile this, and OQ-1 may change how much NPC data exists at all.
