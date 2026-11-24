@@ -1,0 +1,233 @@
+{
+  "STR": {
+    "group": "Warrior",
+    "base": 10,
+    "effects": {
+      "PhysicalDamage": {
+        "actorValue": "AttackDamageMult",
+        "curve": {
+          "curve": "linear",
+          "a": 0.01,
+          "b": 0
+        },
+        "_todo": "TODO(OQ-2): placeholder coefficients of the default effects"
+      },
+      "CarryCapacity": {
+        "actorValue": "CarryWeight",
+        "curve": {
+          "curve": "linear",
+          "a": 2,
+          "b": 0
+        },
+        "_todo": "TODO(OQ-2): placeholder coefficients of the default effects"
+      }
+    }
+  },
+  "DEX": {
+    "group": "Thief",
+    "base": 10,
+    "effects": {
+      "CritChancePhysical": {
+        "named": "CritChancePhysical",
+        "curve": {
+          "curve": "asymptotic",
+          "S": 0,
+          "E": 50,
+          "c": 0.01
+        },
+        "_todo": "TODO(OQ-2): placeholder coefficients of the default effects"
+      },
+      "CritChanceMagic": {
+        "named": "CritChanceMagic",
+        "curve": {
+          "curve": "asymptotic",
+          "S": 0,
+          "E": 50,
+          "c": 0.01
+        },
+        "_todo": "TODO(OQ-2): placeholder coefficients of the default effects"
+      }
+    }
+  },
+  "CON": {
+    "group": "Warrior",
+    "base": 10,
+    "effects": {
+      "Health": {
+        "actorValue": "Health",
+        "curve": {
+          "curve": "linear",
+          "a": 5,
+          "b": 0
+        },
+        "_todo": "TODO(OQ-2): placeholder coefficients of the default effects"
+      },
+      "HealthRecovery": {
+        "actorValue": "HealRate",
+        "curve": {
+          "curve": "linear",
+          "a": 0.02,
+          "b": 0
+        },
+        "_todo": "TODO(OQ-2): placeholder coefficients of the default effects"
+      },
+      "MagickaRecovery": {
+        "actorValue": "MagickaRate",
+        "curve": {
+          "curve": "linear",
+          "a": 0.02,
+          "b": 0
+        },
+        "_todo": "TODO(OQ-2): placeholder coefficients of the default effects"
+      },
+      "StaminaRecovery": {
+        "actorValue": "StaminaRate",
+        "curve": {
+          "curve": "linear",
+          "a": 0.02,
+          "b": 0
+        },
+        "_todo": "TODO(OQ-2): placeholder coefficients of the default effects"
+      },
+      "PoisonResistance": {
+        "actorValue": "PoisonResist",
+        "curve": {
+          "curve": "linear",
+          "a": 0.5,
+          "b": 0
+        },
+        "_todo": "TODO(OQ-2): placeholder coefficients of the default effects"
+      },
+      "DiseaseResistance": {
+        "actorValue": "ResistDisease",
+        "curve": {
+          "curve": "linear",
+          "a": 0.5,
+          "b": 0
+        },
+        "_todo": "TODO(OQ-2): placeholder coefficients of the default effects"
+      }
+    }
+  },
+  "INT": {
+    "group": "Mage",
+    "base": 10,
+    "effects": {
+      "Magicka": {
+        "actorValue": "Magicka",
+        "curve": {
+          "curve": "linear",
+          "a": 5,
+          "b": 0
+        },
+        "_todo": "TODO(OQ-2): placeholder coefficients of the default effects"
+      },
+      "MagicResistance": {
+        "actorValue": "ResistMagic",
+        "curve": {
+          "curve": "linear",
+          "a": 0.5,
+          "b": 0
+        },
+        "_todo": "TODO(OQ-2): placeholder coefficients of the default effects"
+      },
+      "LearningSpeed": {
+        "named": "LearningSpeed",
+        "curve": {
+          "curve": "asymptotic",
+          "S": 0,
+          "E": 1,
+          "c": 0.02
+        },
+        "_todo": "TODO(OQ-4): placeholder learning-speed curve"
+      }
+    }
+  },
+  "WIS": {
+    "group": "Mage",
+    "base": 10,
+    "effects": {
+      "MagickaRecovery": {
+        "actorValue": "MagickaRate",
+        "curve": {
+          "curve": "linear",
+          "a": 0.05,
+          "b": 0
+        },
+        "_todo": "TODO(OQ-2): placeholder coefficients of the default effects"
+      },
+      "MagicDamage": {
+        "named": "MagicDamage",
+        "curve": {
+          "curve": "linear",
+          "a": 0.01,
+          "b": 0
+        },
+        "_todo": "TODO(OQ-2): placeholder coefficients of the default effects"
+      }
+    }
+  },
+  "PER": {
+    "group": "Thief",
+    "base": 10,
+    "effects": {
+      "LearningSpeed": {
+        "named": "LearningSpeed",
+        "curve": {
+          "curve": "asymptotic",
+          "S": 0,
+          "E": 1,
+          "c": 0.02
+        },
+        "_todo": "TODO(OQ-4): placeholder learning-speed curve"
+      }
+    }
+  },
+  "END": {
+    "group": "Warrior",
+    "base": 10,
+    "effects": {
+      "Stamina": {
+        "actorValue": "Stamina",
+        "curve": {
+          "curve": "linear",
+          "a": 5,
+          "b": 0
+        },
+        "_todo": "TODO(OQ-2): placeholder coefficients of the default effects"
+      },
+      "StaminaRecovery": {
+        "actorValue": "StaminaRate",
+        "curve": {
+          "curve": "linear",
+          "a": 0.05,
+          "b": 0
+        },
+        "_todo": "TODO(OQ-2): placeholder coefficients of the default effects"
+      },
+      "HealthRecovery": {
+        "actorValue": "HealRate",
+        "curve": {
+          "curve": "linear",
+          "a": 0.01,
+          "b": 0
+        },
+        "_todo": "TODO(OQ-2): placeholder coefficients of the default effects"
+      },
+      "DamageRedirection": {
+        "named": "DamageRedirection",
+        "curve": {
+          "curve": "asymptotic",
+          "S": 0,
+          "E": 0.25,
+          "c": 0.01
+        },
+        "_todo": "TODO(OQ-6): placeholder END redirection share"
+      }
+    }
+  },
+  "CHA": {
+    "group": "Other",
+    "base": 10
+  }
+}

@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <random>
 #include <string>
 #include <string_view>
@@ -99,6 +100,21 @@ TEST_CASE("mod patches load from the plugins subfolder while their plugin is act
 		  std::vector<std::string>{ "_default.json", "Requiem.json", "plugins/Requiem.json" });
 	CHECK(filesOf(result, Diagnostic::Kind::InactivePlugin) == std::vector<std::string>{ "plugins/Inactive.json" });
 	CHECK(filesOf(result, Diagnostic::Kind::InvalidFile).empty());
+}
+
+TEST_CASE("a table folder passes the entry validator on to the merge", "[merge][folder]")
+{
+	const TempFolder folder;
+	folder.write("_default.json", R"({"STR": {"base": 10}})");
+	folder.write("plugins/Requiem.json", R"({"STR": {"base": "high"}})");
+	const auto integerBase = [](const std::string& /*name*/, const json& entry) -> std::optional<std::string> {
+		return entry.at("base").is_number_integer() ? std::nullopt : std::optional<std::string>("base: not an integer");
+	};
+
+	const auto result = loadTableFolder(folder.path(), OnePlugin{}, json::object(), integerBase);
+
+	CHECK(result.merged == json::parse(R"({"STR": {"base": 10}})"));
+	CHECK(filesOf(result, Diagnostic::Kind::InvalidEntry) == std::vector<std::string>{ "plugins/Requiem.json" });
 }
 
 TEST_CASE("file names come out as UTF-8", "[merge][folder]")

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Trials of Mastery Stats: incompatible table",
+  "description": "The mods that ST-28 detects at load, keyed by a name for the log.",
+  "type": "object",
+  "additionalProperties": { "$ref": "#/$defs/mod" },
+  "$defs": {
+    "mod": {
+      "type": "object",
+      "properties": {
+        "plugins": {
+          "description": "Game plugin file names with extension, e.g. \"Requiem.esp\".",
+          "$ref": "#/$defs/names"
+        },
+        "sksePlugins": {
+          "description": "SKSE plugin DLL file names, e.g. \"SkyrimUncapper.dll\".",
+          "$ref": "#/$defs/names"
+        },
+        "_todo": { "$ref": "common.schema.json#/$defs/todo" }
+      },
+      "anyOf": [
+        { "required": ["plugins"], "properties": { "plugins": { "minItems": 1 } } },
+        { "required": ["sksePlugins"], "properties": { "sksePlugins": { "minItems": 1 } } }
+      ],
+      "additionalProperties": false
+    },
+    "names": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

@@ -1,0 +1,350 @@
+{
+  "WeaponSwing": {
+    "training": {
+      "STR": {
+        "curve": "power",
+        "alpha": 0.665,
+        "lambda": 0.589
+      }
+    }
+  },
+  "BowDraw": {
+    "training": {
+      "STR": {
+        "curve": "power",
+        "alpha": 0.665,
+        "lambda": 0.589
+      }
+    }
+  },
+  "CrossbowLoad": {
+    "training": {
+      "STR": {
+        "curve": "power",
+        "alpha": 0.665,
+        "lambda": 0.589
+      }
+    }
+  },
+  "Hit": {
+    "training": {
+      "DEX": {
+        "curve": "linear",
+        "a": 0,
+        "b": 0.5,
+        "_todo": "TODO(OQ-7): placeholder direct activity XP"
+      }
+    }
+  },
+  "StaffUse": {
+    "training": {
+      "INT": {
+        "curve": "power",
+        "alpha": 0.665,
+        "lambda": 0.589
+      }
+    }
+  },
+  "UnarmedHit": {
+    "training": {
+      "STR": {
+        "curve": "power",
+        "alpha": 0.665,
+        "lambda": 0.589,
+        "_todo": "TODO(OQ-9): placeholder STR XP for unarmed attacks by glove weight"
+      }
+    }
+  },
+  "Fighting": {
+    "training": {
+      "PER": {
+        "curve": "linear",
+        "a": 0,
+        "b": 0.1,
+        "_todo": "TODO(OQ-10): placeholder PER XP for fighting"
+      }
+    }
+  },
+  "DamageTaken": {
+    "training": {
+      "CON": {
+        "curve": "linear",
+        "a": 0,
+        "b": 0.2,
+        "_todo": "TODO(OQ-7): placeholder direct activity XP"
+      },
+      "END": {
+        "curve": "linear",
+        "a": 0,
+        "b": 0.2,
+        "_todo": "TODO(OQ-7): placeholder direct activity XP"
+      }
+    }
+  },
+  "DiseaseRecovery": {
+    "training": {
+      "CON": {
+        "curve": "linear",
+        "a": 0,
+        "b": 2,
+        "_todo": "TODO(OQ-7): placeholder direct activity XP"
+      },
+      "END": {
+        "curve": "linear",
+        "a": 0,
+        "b": 2,
+        "_todo": "TODO(OQ-7): placeholder direct activity XP"
+      }
+    }
+  },
+  "PoisonResisted": {
+    "training": {
+      "CON": {
+        "curve": "linear",
+        "a": 0,
+        "b": 0.5,
+        "_todo": "TODO(OQ-7): placeholder direct activity XP"
+      },
+      "END": {
+        "curve": "linear",
+        "a": 0,
+        "b": 0.5,
+        "_todo": "TODO(OQ-7): placeholder direct activity XP"
+      }
+    }
+  },
+  "SpellCast": {
+    "training": {
+      "INT": {
+        "curve": "linear",
+        "a": 0,
+        "b": 0.2,
+        "_todo": "TODO(OQ-7): placeholder direct activity XP"
+      },
+      "WIS": {
+        "curve": "linear",
+        "a": 0,
+        "b": 0.2,
+        "_todo": "TODO(OQ-7): placeholder direct activity XP"
+      }
+    }
+  },
+  "Sprint": {
+    "training": {
+      "END": {
+        "curve": "linear",
+        "a": 0,
+        "b": 0.1,
+        "_todo": "TODO(OQ-7): placeholder direct activity XP"
+      }
+    }
+  },
+  "OverencumberedWalk": {
+    "training": {
+      "STR": {
+        "curve": "linear",
+        "a": 0,
+        "b": 0.1,
+        "_todo": "TODO(OQ-7): placeholder direct activity XP"
+      }
+    }
+  },
+  "Trade": {
+    "check": {
+      "stats": {
+        "CHA": {
+          "curve": "linear",
+          "a": 0.25,
+          "b": 0
+        }
+      },
+      "skills": {
+        "Speech": {
+          "curve": "linear",
+          "a": 1,
+          "b": 0
+        }
+      },
+      "result": {
+        "curve": "linear",
+        "a": 1,
+        "b": 0
+      },
+      "_todo": "TODO(OQ-5): placeholder check weights and result mapping"
+    },
+    "training": {
+      "CHA": {
+        "curve": "power",
+        "alpha": 0.1,
+        "lambda": 0.5
+      }
+    }
+  },
+  "Persuade": {
+    "check": {
+      "stats": {
+        "CHA": {
+          "curve": "linear",
+          "a": 0.25,
+          "b": 0
+        }
+      },
+      "skills": {
+        "Speech": {
+          "curve": "linear",
+          "a": 1,
+          "b": 0
+        }
+      },
+      "result": {
+        "curve": "linear",
+        "a": 1,
+        "b": 0
+      },
+      "_todo": "TODO(OQ-5): placeholder check weights and result mapping"
+    },
+    "training": {
+      "CHA": {
+        "curve": "linear",
+        "a": 0,
+        "b": 1,
+        "_todo": "TODO(OQ-7): placeholder direct activity XP"
+      }
+    }
+  },
+  "Intimidate": {
+    "check": {
+      "stats": {
+        "CHA": {
+          "curve": "linear",
+          "a": 0.25,
+          "b": 0
+        },
+        "STR": {
+          "curve": "linear",
+          "a": 0.25,
+          "b": 0
+        }
+      },
+      "skills": {
+        "Speech": {
+          "curve": "linear",
+          "a": 1,
+          "b": 0
+        }
+      },
+      "result": {
+        "curve": "linear",
+        "a": 1,
+        "b": 0
+      },
+      "_todo": "TODO(OQ-5): placeholder check weights and result mapping"
+    },
+    "training": {
+      "CHA": {
+        "curve": "linear",
+        "a": 0,
+        "b": 1,
+        "_todo": "TODO(OQ-7): placeholder direct activity XP"
+      }
+    }
+  },
+  "Interaction": {
+    "training": {
+      "CHA": {
+        "curve": "linear",
+        "a": 0,
+        "b": 1
+      }
+    }
+  },
+  "Lockpicking": {
+    "check": {
+      "stats": {
+        "DEX": {
+          "curve": "linear",
+          "a": 0.25,
+          "b": 0
+        }
+      },
+      "skills": {
+        "Lockpicking": {
+          "curve": "linear",
+          "a": 1,
+          "b": 0
+        }
+      },
+      "result": {
+        "curve": "linear",
+        "a": 1,
+        "b": 0
+      },
+      "_todo": "TODO(OQ-5): placeholder check weights and result mapping"
+    }
+  },
+  "Pickpocket": {
+    "check": {
+      "stats": {
+        "DEX": {
+          "curve": "linear",
+          "a": 0.25,
+          "b": 0
+        }
+      },
+      "skills": {
+        "Pickpocket": {
+          "curve": "linear",
+          "a": 1,
+          "b": 0
+        }
+      },
+      "result": {
+        "curve": "linear",
+        "a": 1,
+        "b": 0
+      },
+      "_todo": "TODO(OQ-5): placeholder check weights and result mapping"
+    }
+  },
+  "Sneak": {
+    "check": {
+      "stats": {
+        "DEX": {
+          "curve": "linear",
+          "a": 0.25,
+          "b": 0
+        }
+      },
+      "skills": {
+        "Sneak": {
+          "curve": "linear",
+          "a": 1,
+          "b": 0
+        }
+      },
+      "result": {
+        "curve": "linear",
+        "a": 1,
+        "b": 0
+      },
+      "_todo": "TODO(OQ-5): placeholder check weights and result mapping"
+    }
+  },
+  "Detection": {
+    "check": {
+      "stats": {
+        "PER": {
+          "curve": "linear",
+          "a": 0.25,
+          "b": 0
+        }
+      },
+      "result": {
+        "curve": "linear",
+        "a": 1,
+        "b": 0
+      },
+      "_todo": "TODO(OQ-5): placeholder check weights and result mapping"
+    }
+  }
+}
