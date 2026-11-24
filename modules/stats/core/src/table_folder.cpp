@@ -109,7 +109,7 @@ void FolderReader::addFile(const std::filesystem::directory_entry& entry, TableS
 
 }
 
-MergeResult loadTableFolder(const std::filesystem::path& folder, const PluginQuery& plugins, const nlohmann::json& registered)
+MergeResult loadTableFolder(const std::filesystem::path& folder, const PluginQuery& plugins, const nlohmann::json& registered, const EntryValidator& validator)
 {
 	std::vector<TableSource> sources;
 	std::vector<Diagnostic>  readErrors;
@@ -124,7 +124,7 @@ MergeResult loadTableFolder(const std::filesystem::path& folder, const PluginQue
 		reader.read(pluginsFolder, TableSource::Folder::Plugins);
 	}
 
-	auto result = mergeTable(sources, plugins, registered);
+	auto result = mergeTable(sources, plugins, registered, validator);
 	result.diagnostics.insert(result.diagnostics.begin(), readErrors.begin(), readErrors.end());
 	return result;
 }

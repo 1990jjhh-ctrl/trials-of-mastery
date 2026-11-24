@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <iterator>
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -381,4 +382,95 @@ TEST_CASE("an invalid default file is skipped too", "[merge][invalid]")
 
 	CHECK(filesOf(result, Diagnostic::Kind::InvalidFile) == std::vector<std::string>{ "_default.json" });
 	CHECK(result.merged.at("who") == "patch.json");
+}
+
+namespace
+{
+
+// Accepts an entry with an integer "base" only.
+std::optional<std::string> needsBase(const std::string& /*name*/, const json& entry)
+{
+	if (entry.is_object() && entry.contains("base") && entry.at("base").is_number_integer()) {
+		return std::nullopt;
+	}
+	return "base: must be an integer";
+}
+
+std::vector<TableSource> withDefault(std::vector<TableSource> patches)
+{
+	patches.insert(patches.begin(), { "_default.json", R"({"STR": {"base": 10, "group": "Warrior"}})" });
+	return patches;
+}
+
+}
+
+TEST_CASE("a file with an invalid entry is skipped as a whole", "[merge][entry]")
+{
+	const auto sources = withDefault({
+		{ "a.json", R"({"INT": {"base": 4}, "WIS": {"group": "Mage"}})" },
+		{ "b.json", R"({"CON": {"base": 6}})" },
+	});
+
+	const auto result = mergeTable(sources, FakePlugins{}, json::object(), needsBase);
+
+	CHECK(result.merged == json::parse(R"({"STR": {"base": 10, "group": "Warrior"}, "CON": {"base": 6}})"));
+	CHECK(filesOf(result, Diagnostic::Kind::Loaded) == std::vector<std::string>{ "_default.json", "b.json" });
+	const auto invalid = ofKind(result, Diagnostic::Kind::InvalidEntry);
+	REQUIRE(invalid.size() == 1);
+	CHECK(invalid[0].file == "a.json");
+	CHECK(invalid[0].key == "/WIS");
+	CHECK(invalid[0].detail == "base: must be an integer");
+}
+
+TEST_CASE("the validator sees the entry after the file is merged", "[merge][entry]")
+{
+	const auto sources = withDefault({
+		{ "field.json", R"({"STR": {"group": "Thief"}})" },
+		{ "removes.json", R"({"STR": {"base": null}})" },
+		{ "adds.json", R"({"DEX": {"group": "Thief"}})" },
+	});
+
+	const auto result = mergeTable(sources, FakePlugins{}, json::object(), needsBase);
+
+	CHECK(result.merged == json::parse(R"({"STR": {"base": 10, "group": "Thief"}})"));
+	CHECK(filesOf(result, Diagnostic::Kind::InvalidEntry) == std::vector<std::string>{ "adds.json", "removes.json" });
+}
+
+TEST_CASE("removing an entry is not validated", "[merge][entry]")
+{
+	const auto sources = withDefault({ { "drop.json", R"({"STR": null})" } });
+
+	const auto result = mergeTable(sources, FakePlugins{}, json::object(), needsBase);
+
+	CHECK(result.merged == json::object());
+	CHECK(ofKind(result, Diagnostic::Kind::InvalidEntry).empty());
+}
+
+TEST_CASE("a skipped file leaves no trace in the merge state", "[merge][entry]")
+{
+	const auto sources = withDefault({
+		{ "a.json", R"({"STR": {"base": 11, "group": null}, "INT": {"group": "Mage"}})" },
+		{ "b.json", R"({"STR": {"base": 12}})" },
+	});
+
+	const auto result = mergeTable(sources, FakePlugins{}, json::object(), needsBase);
+
+	CHECK(result.merged == json::parse(R"({"STR": {"base": 12, "group": "Warrior"}})"));
+	CHECK(filesOf(result, Diagnostic::Kind::Loaded) == std::vector<std::string>{ "_default.json", "b.json" });
+	CHECK(ofKind(result, Diagnostic::Kind::Conflict).empty());
+	CHECK(ofKind(result, Diagnostic::Kind::Removed).empty());
+	using tom::stats::Layer;
+	using tom::stats::Origin;
+	CHECK(result.origins.at("/STR/base") == Origin{ Layer::Patch, "b.json" });
+	CHECK(result.origins.at("/STR/group") == Origin{ Layer::Default, "_default.json" });
+}
+
+TEST_CASE("without a validator every entry is accepted", "[merge][entry]")
+{
+	const auto sources = withDefault({ { "a.json", R"({"WIS": {"group": "Mage"}})" } });
+
+	const auto result = mergeTable(sources, FakePlugins{});
+
+	CHECK(result.merged.contains("WIS"));
+	CHECK(ofKind(result, Diagnostic::Kind::InvalidEntry).empty());
 }

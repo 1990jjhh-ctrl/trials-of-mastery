@@ -193,21 +193,70 @@ public:
 		result_(result) {}
 
 	void apply(const json& content, const Origin& origin) { mergeObject(result_.merged, content, json::json_pointer{}, origin); }
+	void applyFile(const OrderedFile& file, const EntryValidator& validator);
 	void finish();
 
 private:
-	void mergeObject(json& target, const json& patch, const json::json_pointer& path, const Origin& origin);
-	void mergeKey(json& target, const std::string& key, const json& value, const json::json_pointer& path, const Origin& origin);
-	void removeKey(json& target, const std::string& key, const json::json_pointer& path, const Origin& origin);
-	void setOrigin(const json::json_pointer& path, const Origin& origin);
-	void claim(const json::json_pointer& path, const Origin& origin);
-	void release(const std::string& path, const Origin& origin);
-	void releaseChildren(const std::string& path, const Origin& origin);
-	void reportConflict(const std::string& path, const std::string& earlierFile, const Origin& origin);
+	struct Rejection
+	{
+		std::string key;
+		std::string reason;
+	};
+
+	[[nodiscard]] std::optional<Rejection> firstRejected(const json& content, const EntryValidator& validator) const;
+	void                                   mergeObject(json& target, const json& patch, const json::json_pointer& path, const Origin& origin);
+	void                                   mergeKey(json& target, const std::string& key, const json& value, const json::json_pointer& path, const Origin& origin);
+	void                                   removeKey(json& target, const std::string& key, const json::json_pointer& path, const Origin& origin);
+	void                                   setOrigin(const json::json_pointer& path, const Origin& origin);
+	void                                   claim(const json::json_pointer& path, const Origin& origin);
+	void                                   release(const std::string& path, const Origin& origin);
+	void                                   releaseChildren(const std::string& path, const Origin& origin);
+	void                                   reportConflict(const std::string& path, const std::string& earlierFile, const Origin& origin);
 
 	MergeResult&                       result_;
 	std::map<std::string, std::string> owners_;  // JSON pointer of a key a patch set -> that patch file
 };
+
+// Merges a file and validates the entries it sets. On a rejection, the state
+// from before the file is restored, so the merge goes on as if the file had
+// never been read.
+void Merger::applyFile(const OrderedFile& file, const EntryValidator& validator)
+{
+	if (!validator) {
+		result_.diagnostics.push_back({ Diagnostic::Kind::Loaded, file.origin.file, "", "" });
+		apply(file.content, file.origin);
+		return;
+	}
+	auto       merged = result_.merged;
+	auto       origins = result_.origins;
+	auto       owners = owners_;
+	const auto diagnosticCount = result_.diagnostics.size();
+
+	result_.diagnostics.push_back({ Diagnostic::Kind::Loaded, file.origin.file, "", "" });
+	apply(file.content, file.origin);
+	const auto rejection = firstRejected(file.content, validator);
+	if (!rejection) {
+		return;
+	}
+	result_.merged = std::move(merged);
+	result_.origins = std::move(origins);
+	owners_ = std::move(owners);
+	result_.diagnostics.resize(diagnosticCount);
+	result_.diagnostics.push_back({ Diagnostic::Kind::InvalidEntry, file.origin.file, rejection->key, rejection->reason });
+}
+
+std::optional<Merger::Rejection> Merger::firstRejected(const json& content, const EntryValidator& validator) const
+{
+	for (const auto& [name, value] : content.items()) {
+		if (value.is_null()) {
+			continue;
+		}
+		if (auto reason = validator(name, result_.merged.at(name))) {
+			return Rejection{ (json::json_pointer{} / name).to_string(), std::move(*reason) };
+		}
+	}
+	return std::nullopt;
+}
 
 // Keeps the origins of the leaves only; an object that received keys is
 // described by the origins of its keys.
@@ -321,7 +370,7 @@ std::string TableSource::path() const
 	return name;
 }
 
-MergeResult mergeTable(std::span<const TableSource> sources, const PluginQuery& plugins, const nlohmann::json& registered)
+MergeResult mergeTable(std::span<const TableSource> sources, const PluginQuery& plugins, const nlohmann::json& registered, const EntryValidator& validator)
 {
 	MergeResult result;
 	FileOrder   order(plugins, result.diagnostics);
@@ -338,8 +387,7 @@ MergeResult mergeTable(std::span<const TableSource> sources, const PluginQuery& 
 			std::string("registered entries are ") + registered.type_name() + ", not an object" });
 	}
 	for (const auto& file : files) {
-		result.diagnostics.push_back({ Diagnostic::Kind::Loaded, file.origin.file, "", "" });
-		merger.apply(file.content, file.origin);
+		merger.applyFile(file, validator);
 	}
 	merger.finish();
 	return result;

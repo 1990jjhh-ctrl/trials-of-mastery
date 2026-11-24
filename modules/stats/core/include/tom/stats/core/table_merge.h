@@ -5,7 +5,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include <functional>
 #include <map>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -65,13 +67,15 @@ struct Diagnostic
 		InactivePlugin,     // mod patch was skipped: its plugin is not active
 		InvalidFile,        // file was skipped: not JSON, not an object, unreadable
 		InvalidRegistered,  // registered entries were skipped: not an object
+		InvalidEntry,       // file was skipped: the EntryValidator rejected an entry
 	};
 
 	Kind        kind = Kind::Loaded;
 	std::string file;    // TableSource::path(); empty for the registered entries.
 						 // loadTableFolder() puts a folder here for some read
 						 // errors: "" or "plugins" (see table_folder.h)
-	std::string key;     // JSON pointer, empty when the diagnostic is about the whole file
+	std::string key;     // JSON pointer, empty when the diagnostic is about the whole file;
+						 // InvalidEntry: the rejected entry
 	std::string detail;  // Conflict: the earlier file; SameNamePlugins: the plugins;
 						 // SameNameFiles: the file loaded before; Invalid*: the reason
 };
@@ -105,9 +109,19 @@ struct MergeResult
 
 inline constexpr std::string_view kDefaultFileName = "_default.json";
 
+// Checks one top-level entry of a table: (entry name, the entry after merging
+// a file) -> the reason it is invalid, or nullopt when it is valid.
+using EntryValidator = std::function<std::optional<std::string>(const std::string& name, const nlohmann::json& entry)>;
+
 // Merges the files of one table folder on top of `registered`, the entries
 // that mods registered through the API, which must be an object.
+//
+// With a validator, each file is merged into a staged copy of the merge state
+// and the validator runs on every entry the file sets (not on entries it
+// removes with null). If it rejects one, the file is skipped as if it had
+// never been read, with an InvalidEntry diagnostic; otherwise the staged
+// state is kept. Registered entries are not validated here.
 [[nodiscard]] MergeResult mergeTable(std::span<const TableSource> sources, const PluginQuery& plugins,
-	const nlohmann::json& registered = nlohmann::json::object());
+	const nlohmann::json& registered = nlohmann::json::object(), const EntryValidator& validator = {});
 
 }

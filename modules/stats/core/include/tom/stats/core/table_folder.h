@@ -17,6 +17,6 @@ namespace tom::stats
 // diagnostic's `file` is the folder: "" for `folder`, "plugins" for its
 // subfolder.
 [[nodiscard]] MergeResult loadTableFolder(const std::filesystem::path& folder, const PluginQuery& plugins,
-	const nlohmann::json& registered = nlohmann::json::object());
+	const nlohmann::json& registered = nlohmann::json::object(), const EntryValidator& validator = {});
 
 }
