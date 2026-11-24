@@ -73,7 +73,7 @@ Out of scope:
 | Effective stat | `(base + accumulated + active) · multiplier + modifier`; all effects use it |
 | Advance | Moving a stat's active points into its accumulated points, which resets the cost to 100 |
 | Ascend | Converting a stat's accumulated and active points into base with a formula from the caller |
-| Start value | An actor's base at character creation; the reference for actor-value effects (ST-10) |
+| Start value | An actor's base at character creation, moved by later base adjustments (ST-3); the reference for actor-value effects (ST-10) |
 | `k` | The number of active points; the exponent of the cost formula |
 | `r` | Growth factor of the cost formula |
 | Stat box | The message box that shows the stats and handles level-ups (ST-21, ST-24) |
@@ -89,7 +89,7 @@ Requirement IDs use the prefix ST and run in document order.
 
 - ST-1: The module provides the eight core stats.
 - ST-2: Other modules can register additional stats through the API. A registered stat gets XP, the cost formula, effects, display and the level-up prompt like a core stat. Its effects come from its entry in the stats file (ST-9) or are implemented by the module that registers it.
-- ST-3: Each stat has a default base, set in the stats file (10 for every core stat); a registered stat's default base is set by the module that registers it. An actor's base is the default base plus relative adjustments: one per race, set in the stats file, and one per source registered through the API, for example a class from the professions module. Adjustments add up: a race's +1 and a class's −2 on the same stat give −1.
+- ST-3: Each stat has a default base, set in the stats file (10 for every core stat); a registered stat's default base is set by the module that registers it. An actor's base is the default base plus relative adjustments: one per race, set in the stats file, and one per source registered through the API, for example a class from the professions module. Adjustments add up: a race's +1 and a class's −2 on the same stat give −1. Adding or removing an adjustment later moves the start value together with the base, so pools don't change, apart from the realm multiplier's scaling (ST-8, MA-3).
 - ST-4: Stats exist for every actor. Only the player trains stats; other modules set NPC values through the API (no per-NPC training).
 
 ### 7.2 XP and cost
@@ -239,6 +239,5 @@ Status levels and domain ownership are defined in the [overview](../PRD.md#5-com
 - END redirection: share of damage as a function of END.
 - Direct activity XP (ST-15): the amounts per DEX hit, spell, damage taken, disease and poison (they must stay small); the XP for persuading and intimidating by target. Direct XP and skill level-up XP stack.
 - Behaviour on detecting an incompatible mod: warn only, or disable (ST-28 currently disables).
-- An adjustment added or removed after character creation (ST-3, ST-26): does it move the start value together with the base, so pools don't change, or only the base?
 - STR XP for unarmed attacks by glove weight (ST-15): the curve and its amounts.
 - PER XP for fighting (ST-15): what counts as fighting and how much XP it gives.
