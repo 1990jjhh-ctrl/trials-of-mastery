@@ -167,9 +167,9 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 #### C4 Stat values, cost and progression
 
 - **Goal:** per-stat and per-actor state with cost, XP gain with carry-over, advance, ascend and effective value.
-- **Covers:** ST-1, ST-2 (registry), ST-3 (base and start value), ST-4, ST-5, ST-6 (math), ST-7, ST-8.
+- **Covers:** ST-1, ST-2 (registry, free-point opt-out), ST-3 (base and start value), ST-4, ST-5, ST-6 (math), ST-7, ST-8.
 - **Interfaces:**
-  - `StatId`. `StatRegistry` holds the core stats plus registered ones, with a dormant flag (assumption 8).
+  - `StatId`. `StatRegistry` holds the core stats plus registered ones, with a dormant flag (assumption 8) and a flag for registered stats opted out of free level-up points ([ST-2](PRD.md#71-stats), for example LUC, [LU-1](../luck/PRD.md)). `registerStat` (already implemented) gains that flag as a parameter, defaulting to "gets free points"; core stats always get them.
   - `StatValue { int32 base, accumulated, active; double xp; }`.
   - `ActorStats`: stat values, start values, multiplier, `map<key,int32>` modifiers per stat and `map<key,int32>` base adjustments per stat (assumption 11).
   - `initStat(ActorStats&, StatId, int32 defaultBase)`: base and start value become the default base plus the stat's adjustments (ST-3).
@@ -228,7 +228,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 #### C7 Stats service, level-up logic and events
 
 - **Goal:** one facade over registry, actor states, tables, modifiers and events. The game layer and the API call only this facade.
-- **Covers:** ST-3 (adjustments), ST-6 (auto-advance, advance claim, N, `setR` validation), ST-18, ST-20, ST-22 (claim flag), ST-26 (operations and events).
+- **Covers:** ST-2 (free-point opt-out), ST-3 (adjustments), ST-6 (auto-advance, advance claim, N, `setR` validation), ST-18, ST-20, ST-21 (opt-out), ST-22 (claim flag), ST-26 (operations and events).
 - **Interfaces:**
   - `StatsService` operations:
     - read values; `addXp`; `setValues`;
@@ -237,7 +237,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
     - `setR` (one value per save, player only, see ST-6 and [§5](PRD.md#5-scope)); `setN`;
     - `claimAdvancing(owner)`; `advance` and `advanceAll`; `ascend`;
     - `onPlayerLevelUp(newLevel)`;
-    - `claimPointAssignment(owner)`; `assignFreePoint(stat)`.
+    - `claimPointAssignment(owner)`; `assignFreePoint(stat)`, which rejects a stat opted out of free points (ST-2, ST-20), also for the module that claimed point assignment.
   - `EventSink` interface with the five ST-26 events.
   - A stat change returns the `AvDelta`s from C5.
 - **Verification:** `unit` tests check that:
@@ -248,7 +248,8 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - `setR` with a value that [ST-6](PRD.md#72-xp-and-cost) rejects keeps the previous value and logs the rejection;
   - a base adjustment added and removed through the service moves base and start value and yields no pool change at multiplier 1; the race key is rejected;
   - events fire in the right order with the right payloads;
-  - unspent points stay pending.
+  - unspent points stay pending;
+  - `assignFreePoint` on an opted-out registered stat is rejected and leaves the points pending; the stat still gains XP and points from training.
 - **Depends on:** C4, C5, C6.
 
 #### C8 Persistence format
@@ -265,9 +266,9 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 #### C9 Stat box model
 
 - **Goal:** a pure state machine for the stat-box pages and their texts. It has no UI.
-- **Covers:** ST-21, ST-22, ST-24 (content and flow).
+- **Covers:** ST-2 (opt-out in the box), ST-21, ST-22, ST-24 (content and flow).
 - **Interfaces:** `StatBoxModel(service, maxButtons)`. `Page { text; vector<Button> }`. `press(buttonIndex) -> Page | Closed`.
-- **Verification:** `unit` tests for every page transition in ST-21 and ST-22, for group pages when the stats plus "Back" exceed `maxButtons`, and for registered stats without a group landing in Other.
+- **Verification:** `unit` tests for every page transition in ST-21 and ST-22, for group pages when the stats plus "Back" exceed `maxButtons`, and for registered stats without a group landing in Other. A registered stat opted out of free points (ST-2) shows on the info page but not on the "Level Up" pages, and a group left without stats there is not shown (ST-21).
 - **Depends on:** C7. **Parallel** with C8.
 
 ### Phase 3: Spikes (uncertain game hooks)
