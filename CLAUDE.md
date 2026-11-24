@@ -31,6 +31,8 @@ Work on a module or task goes through the agents in this order:
 2. `implementer` implements one task of the plan on its own branch.
 3. `reviewer` and `verifier` check the finished implementation, in parallel. The reviewer merges the pull request once its verdict is approve, the verifier passed on the same head and CI is green.
 
+In-game checks with the skyrim MCP bridge run only from the main session, one run at a time; subagents, including the implementer, don't start the game.
+
 ## To fill in once code exists
 
 How the SKSE plugins, Papyrus scripts and ESPs work together.
