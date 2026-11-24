@@ -308,13 +308,14 @@ The hook:
 - Replaces the tutorial call at 52510+0xFFA with a no-op, since that tutorial asks the player to choose Health, Magicka or Stamina.
 - Finds each site by scanning for exactly one call to the known target. The confirm callback's call is the one after `mov rcx, [rax + offset of PlayerCharacter::skills]`, with the offset taken from CommonLibSSE-NG's layout at runtime (0x9C0 on 1.7.99 and later). If a site is not found, for example because another plugin patched it, nothing is patched and the log says why.
 
-Evidence (plugin log, console `player.getlevel` and `player.getbaseav`, screenshots), from the build before the review fixes (runtime skills offset, target re-read):
+Evidence (plugin log, console `player.getlevel` and `player.getbaseav`, screenshots). The first three runs are from the build before the review fixes (runtime skills offset, target re-read); the last is a re-test of the fixed build from the main session:
 
 | Run | Result |
 | --- | --- |
 | Hook not installed (baseline), Experience `player.advlevel 500` | Skills menu: `LevelIncrease` to 2, then the LevelUp menu opens with level 2, perk points 1, XP 501/100. Choosing Stamina: Stamina 105 to 115, XP 401/125, and the next LevelUp menu opens at once. The "Leveling Up" tutorial shows first. |
 | Hook, Experience `player.advlevel 500` | Three level-ups in one menu opening, each finished by the hook. Level 1 to 4, "Perks to increase: 3", XP 500/100 to 125/175. Health 110, Magicka 85, Stamina 105, carry weight 325 unchanged. No LevelUp menu. The tutorial still showed (fixed in the next run). |
 | Hook with the tutorial patch, Experience skill XP (`bEnableSkillXP = true`, `player.advskill` on six skills) | Level 1 to 9 within about 0.3 s, "Perks to increase: 8", Health, Magicka, Stamina and carry weight unchanged, no LevelUp menu and no tutorial. No crash log. |
+| Fixed hook, Experience, re-test on 2026-11-24 on 1.7.104 | Level 1 to 4, 3 perk points, Health, Magicka, Stamina and carry weight unchanged, no LevelUp menu, no tutorial, no crash. |
 
 Not covered:
 
