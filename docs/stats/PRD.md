@@ -194,7 +194,7 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, detection, sp
 | Lockpicking | DEX, PER | Speech | CHA, WIS |
 | Pickpocket | DEX, PER | Smithing | STR, INT |
 
-Default stat groups, named after the guardian stones: Warrior (STR, CON, END), Mage (INT, WIS), Thief (DEX, PER), Other (CHA and registered stats that name no group, such as LUC).
+Default stat groups, named after the guardian stones: Warrior (STR, CON, END), Mage (INT, WIS), Thief (DEX, PER), Other (CHA and registered stats that name no group, such as the luck module's `Luck:LUC`).
 
 Once the JSON files exist, they hold the values and this section only describes them. Names of stats, skills and actions added by other mods are namespaced (`<Mod>:<Name>`).
 
