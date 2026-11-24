@@ -73,7 +73,7 @@ Out of scope:
 | Effective stat | `(base + accumulated + active) · multiplier + modifier`; all effects use it |
 | Advance | Moving a stat's active points into its accumulated points, which resets the cost to 100 |
 | Ascend | Converting a stat's accumulated and active points into base with a formula from the caller |
-| Start value | An actor's base at character creation; the reference for actor-value effects (ST-10) |
+| Start value | An actor's base at character creation, moved by later base adjustments (ST-3); the reference for actor-value effects (ST-10) |
 | `k` | The number of active points; the exponent of the cost formula |
 | `r` | Growth factor of the cost formula |
 | Stat box | The message box that shows the stats and handles level-ups (ST-21, ST-24) |
@@ -88,8 +88,8 @@ Requirement IDs use the prefix ST and run in document order.
 ### 7.1 Stats
 
 - ST-1: The module provides the eight core stats.
-- ST-2: Other modules can register additional stats through the API. A registered stat gets XP, the cost formula, effects, display and the level-up prompt like a core stat. Its effects come from its entry in the stats file (ST-9) or are implemented by the module that registers it.
-- ST-3: Each stat has a default base, set in the stats file (10 for every core stat); a registered stat's default base is set by the module that registers it. An actor's base is the default base plus relative adjustments: one per race, set in the stats file, and one per source registered through the API, for example a class from the professions module. Adjustments add up: a race's +1 and a class's −2 on the same stat give −1.
+- ST-2: Other modules can register additional stats through the API. A registered stat gets XP, the cost formula, effects, display and the level-up prompt like a core stat; the registering module can opt it out of free level-up points (ST-20, ST-21). Its effects come from its entry in the stats file (ST-9) or are implemented by the module that registers it.
+- ST-3: Each stat has a default base, set in the stats file (10 for every core stat); a registered stat's default base is set by the module that registers it. An actor's base is the default base plus relative adjustments: one per race, set in the stats file, and one per source registered through the API, for example a class from the professions module. Adjustments add up: a race's +1 and a class's −2 on the same stat give −1. Adding or removing an adjustment later moves the start value together with the base, so pools don't change, apart from the realm multiplier's scaling (ST-8, MA-3).
 - ST-4: Stats exist for every actor. Only the player trains stats; other modules set NPC values through the API (no per-NPC training).
 
 ### 7.2 XP and cost
@@ -146,10 +146,10 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, detection, sp
 
 ### 7.5 Level-up
 
-- ST-18: The module does not decide when a level-up happens. It reacts to every player level-up, whether vanilla, Experience or another mod triggered it.
+- ST-18: The module does not decide when a level-up happens. It reacts to every player level-up, whether vanilla, Experience or another mod triggered it. Level changes that bypass the game's level-up (the console's `setlevel`, for example) grant no free points and don't advance stats (ST-6), just as vanilla grants them no perk point.
 - ST-19: The stat box replaces the vanilla level-up menu, and the +10 Health/Magicka/Stamina reward is never granted. The stat box opens at the moment the vanilla level-up menu would open. The level-up itself (level and perk point) is applied right away; only spending the free points can wait.
 - ST-20: Each level-up grants free stat points; the number is set in the INI (default 3). Free points go to the accumulated points and do not raise the cost of trained points.
-- ST-21: While free points are unspent, the stat box shows "Level Up" and "Cancel" instead of "OK". "Cancel" closes the box and keeps the points for later; they are stored in the save. "Level Up" shows the number of free points and one button per stat with its current value, plus "Back", and repeats until all points are spent or the player goes back. Registered stats appear like core stats. When the stats and "Back" do not fit in one box, the box first shows one button per stat group, and each group shows its stats. Each stat belongs to a group, set in the stats file.
+- ST-21: While free points are unspent, the stat box shows "Level Up" and "Cancel" instead of "OK". "Cancel" closes the box and keeps the points for later; they are stored in the save. "Level Up" shows the number of free points and one button per stat with its current value, plus "Back", and repeats until all points are spent or the player goes back. Registered stats appear like core stats, unless they are opted out of free points (ST-2). When the stats and "Back" do not fit in one box, the box first shows one button per stat group, and each group shows its stats. Each stat belongs to a group, set in the stats file.
 - ST-22: Another module can take over point assignment through the API. The stat box then shows only "OK", and that module distributes the points (the professions module does this by class profile).
 - ST-23: Perk points stay as in vanilla.
 
@@ -194,7 +194,7 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, detection, sp
 | Lockpicking | DEX, PER | Speech | CHA, WIS |
 | Pickpocket | DEX, PER | Smithing | STR, INT |
 
-Default stat groups, named after the guardian stones: Warrior (STR, CON, END), Mage (INT, WIS), Thief (DEX, PER), Other (CHA and registered stats that name no group, such as the luck module's `Luck:LUC`).
+Default stat groups, named after the guardian stones: Warrior (STR, CON, END), Mage (INT, WIS), Thief (DEX, PER), Other (CHA and registered stats that name no group).
 
 Once the JSON files exist, they hold the values and this section only describes them. Names of stats, skills and actions added by other mods are namespaced (`<Mod>:<Name>`).
 
@@ -205,16 +205,19 @@ Status levels and domain ownership are defined in the [overview](../PRD.md#5-com
 | Mod or category | Status | Conflict | Resolution |
 | --- | --- | --- | --- |
 | Requiem | Incompatible | Replaces attributes | Detected at load (ST-28) |
-| RPG stat and attribute mods | Incompatible | Write the same stats with different definitions and effects | Detected at load (ST-28) |
+| RPG stat and attribute mods (Skyrim Attributes Mod., Nexus 200211; CARE, Nexus 148551; Alternate Stat System; SkyRem Grace; Roleplaying in Skyrim - Stats) | Incompatible | Write the same stats with different definitions and effects | Detected at load (ST-28) |
+| Skyrim Skill Uncapper | Incompatible | Changes skill XP alongside the stats' learning speed and training (ST-12, ST-14); skill caps belong to Beyond Mastery or Experience ([overview](../PRD.md#52-domain-ownership)) | Detected at load (ST-28) |
+| Incremental Injuries, Exhaustion - Incremental Fatigue | Incompatible | Change pool maximums and regeneration alongside the stat effects | Detected at load (ST-28) |
 | Experience | Compatible | Changes how and when level-ups happen | Level-ups from Experience grant stat points (ST-18) |
 | Beyond Mastery | Integrated | Raises skill caps above 100 | Skill levels above 100 keep training stats (ST-16) |
 | Custom Skills Framework | Integrated | Adds skills | Its skills train stats once a mapping is registered (ST-16) |
 | Race overhauls (Races of Skyrim) | Compatible | Change race base pools | Pool contributions are added to the pools, never set (ST-10) |
-| Combat overhauls (Valhalla Combat, Wildcat) | Compatible | Damage, stamina and blocking formulas | The combat mod owns formulas; test balance |
+| Valhalla Combat | Incompatible | Changes stamina, damage and blocking in ways that conflict with stat effects | Detected at load (ST-28) |
+| Combat overhauls (Wildcat) | Compatible | Damage, stamina and blocking formulas | The combat mod owns formulas; test balance |
 | Level-up menu mods | Compatible | Change or replace the vanilla level-up menu | The stat box replaces the vanilla level-up menu (ST-19); test which one opens |
 | UI mods (SkyUI) | Compatible | None | The stat box is a native message box (ST-24) |
 
-- ST-28: At load, the module detects the mods in the incompatible file (by default Requiem and known RPG stat mods) through the SKSE plugin list and plugin presence, logs the result, shows a warning and disables itself, unless an INI override allows an unsupported run.
+- ST-28: At load, the module detects the mods in the incompatible file (by default the mods the table above marks as detected at load) through the SKSE plugin list and plugin presence, logs the result, shows a warning and disables itself, unless an INI override allows an unsupported run.
 
 ## 8. Constraints
 
@@ -239,6 +242,5 @@ Status levels and domain ownership are defined in the [overview](../PRD.md#5-com
 - END redirection: share of damage as a function of END.
 - Direct activity XP (ST-15): the amounts per DEX hit, spell, damage taken, disease and poison (they must stay small); the XP for persuading and intimidating by target. Direct XP and skill level-up XP stack.
 - Behaviour on detecting an incompatible mod: warn only, or disable (ST-28 currently disables).
-- An adjustment added or removed after character creation (ST-3, ST-26): does it move the start value together with the base, so pools don't change, or only the base?
 - STR XP for unarmed attacks by glove weight (ST-15): the curve and its amounts.
 - PER XP for fighting (ST-15): what counts as fighting and how much XP it gives.
