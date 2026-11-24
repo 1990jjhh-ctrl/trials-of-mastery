@@ -56,6 +56,7 @@ These are the user's answers to the decisions in the first draft of this plan.
 8. **Registered stats whose owner is missing at load:** their saved data is kept but dormant. It is not shown and has no effects, and it comes back when the owner registers again. The PRD does not cover this case.
 9. **Custom Skills Framework (CSF):** how the module learns about a CSF skill level-up is not known (spike S7). Until then ST-16 is covered for vanilla skills, skills above 100 and level-ups reported through the API.
 10. **Game version (confirmed, [overview §4](../PRD.md#4-shared-constraints)):** 1.6.x and newer, tested on 1.7.104. T1.2 checks the Address Library and CommonLibSSE-NG support for 1.7.104.
+11. **Base adjustments ([ST-3](PRD.md#71-stats)):** an actor's stored base already contains its adjustments, and each adjustment is stored under its key. Setting a key changes base and start value by the difference to the key's old value; removing a key takes its value off both. The race adjustment is one such key, owned by the module and not settable through the API. When the stats table's race adjustment for an actor's race differs from the stored one (a patch changed, or the actor changed race), the module sets the key again, so base and start value move together. A changed **default base** reaches existing actors the same way, as ST-3 and [§8](PRD.md#8-constraints) define: each actor stores the default base last applied per stat, and the module applies the difference.
 
 ## Tasks
 
@@ -166,18 +167,25 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 #### C4 Stat values, cost and progression
 
 - **Goal:** per-stat and per-actor state with cost, XP gain with carry-over, advance, ascend and effective value.
-- **Covers:** ST-1, ST-2 (registry), ST-4, ST-5, ST-6 (math), ST-7, ST-8.
+- **Covers:** ST-1, ST-2 (registry), ST-3 (base and start value), ST-4, ST-5, ST-6 (math), ST-7, ST-8.
 - **Interfaces:**
   - `StatId`. `StatRegistry` holds the core stats plus registered ones, with a dormant flag (assumption 8).
   - `StatValue { int32 base, accumulated, active; double xp; }`.
-  - `ActorStats`: stat values, start values, multiplier and `map<key,int32>` modifiers.
+  - `ActorStats`: stat values, start values, multiplier, `map<key,int32>` modifiers per stat and `map<key,int32>` base adjustments per stat (assumption 11).
+  - `initStat(ActorStats&, StatId, int32 defaultBase)`: base and start value become the default base plus the stat's adjustments (ST-3).
+  - `setBaseAdjustment(ActorStats&, StatId, key, int32)` and `removeBaseAdjustment(ActorStats&, StatId, key)`: change base and start value by the difference (ST-3).
+  - `ActorStats` also stores the default base last applied per stat; `initStat` sets it. `applyDefaultBase(ActorStats&, StatId, int32 defaultBase)` moves base and start value by the difference to it and stores the new value (ST-3).
   - `double cost(double r, int32 k)` returns `+inf` on overflow.
   - `GainResult addXp(StatValue&, double xp, double r)`.
   - `advance(StatValue&)`.
   - `ascend(StatValue&, function<double(int32)>)`; the module rounds the formula's result down (ST-6).
   - `double effective(const ActorStats&, StatId)`.
-- **Verification:** `unit` tests for the cost formula and overflow, several points from one large XP amount with carry-over, advance, ascend with rounding down (2.9 gives 2), effective value with several modifier keys and removal of one key, and no clamp at 100.
-- **Depends on:** T1.1. **Parallel** with C1, C2.
+- **Verification:** `unit` tests for the cost formula and overflow, several points from one large XP amount with carry-over, advance, ascend with rounding down (2.9 gives 2), effective value with several modifier keys and removal of one key, and no clamp at 100. For base adjustments ([ST-3](PRD.md#71-stats)):
+  - a race +1 and a class −2 on a default base of 10 give a base of 9;
+  - adding, changing and removing an adjustment after creation moves base and start value by the same amount, so `effective − start` is unchanged at multiplier 1;
+  - after an ascend, removing an adjustment keeps the ascended points in the base and leaves the start value at the default base plus the remaining adjustments;
+  - `applyDefaultBase` from 10 to 12 moves base and start value by +2 and stores 12; applying 12 again changes nothing.
+- **Depends on:** T1.1. **Parallel** with C1, C2. `StatValue`, `ActorStats` and `StatRegistry` exist already; the base adjustments are an amendment.
 
 #### C5 Effect math
 
@@ -220,11 +228,12 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 #### C7 Stats service, level-up logic and events
 
 - **Goal:** one facade over registry, actor states, tables, modifiers and events. The game layer and the API call only this facade.
-- **Covers:** ST-6 (auto-advance, advance claim, N, `setR` validation), ST-18, ST-20, ST-22 (claim flag), ST-26 (operations and events).
+- **Covers:** ST-3 (adjustments), ST-6 (auto-advance, advance claim, N, `setR` validation), ST-18, ST-20, ST-22 (claim flag), ST-26 (operations and events).
 - **Interfaces:**
   - `StatsService` operations:
     - read values; `addXp`; `setValues`;
     - `setModifier` and `removeModifier`; `setMultiplier`;
+    - `setBaseAdjustment(actor, stat, key, value)` and `removeBaseAdjustment(actor, stat, key)` (ST-3, ST-26); the module's race key is rejected; the returned `AvDelta`s are empty at multiplier 1, since base and start value move together;
     - `setR` (one value per save, player only, see ST-6 and [§5](PRD.md#5-scope)); `setN`;
     - `claimAdvancing(owner)`; `advance` and `advanceAll`; `ascend`;
     - `onPlayerLevelUp(newLevel)`;
@@ -237,6 +246,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - auto-advance follows ST-6 and stops after a claim;
   - `setN` changes the advance interval;
   - `setR` with a value that [ST-6](PRD.md#72-xp-and-cost) rejects keeps the previous value and logs the rejection;
+  - a base adjustment added and removed through the service moves base and start value and yields no pool change at multiplier 1; the race key is rejected;
   - events fire in the right order with the right payloads;
   - unspent points stay pending.
 - **Depends on:** C4, C5, C6.
@@ -437,7 +447,7 @@ Three tasks, all after S6b and C6, each **parallel**:
 #### A1 C++ API
 
 - **Goal:** a versioned public C++ API for other SKSE plugins.
-- **Covers:** ST-2, ST-6 (claim advancing, set N), ST-8, ST-16, ST-17, ST-22, ST-26.
+- **Covers:** ST-2, ST-3 (base adjustments), ST-6 (claim advancing, set N), ST-8, ST-16, ST-17, ST-22, ST-26.
 - **Scope:** `modules/stats/include/tom/stats/api.h` (header only, no CommonLib types beyond forward-declared actors) and the plugin-side implementation.
 - **Interfaces:**
   - An interface struct with a version number, handed out through the SKSE messaging interface on request.
