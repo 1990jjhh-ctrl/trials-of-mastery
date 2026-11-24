@@ -257,7 +257,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 - **Covers:** [§8 persistence constraint](PRD.md#8-constraints), success criterion 3 (format).
 - **Interfaces:** `serialize(const StatsService&) -> bytes`, `deserialize(bytes, ActorIdResolver&) -> expected<State>`. `ActorIdResolver` maps saved actor IDs to current ones (FormID remap) or drops them. The format has a version field.
 - **Verification:** `unit` tests check that:
-  - all persisted fields of §8 round-trip, including dormant stats and N;
+  - all persisted fields of §8 round-trip, including base adjustments per key, the default base last applied per actor and stat, dormant stats and N;
   - unresolved actors are dropped and logged;
   - an older format version is either read or rejected explicitly.
 - **Depends on:** C7.
@@ -334,10 +334,11 @@ Not covered:
 #### G2 Co-save persistence and actor lifecycle
 
 - **Goal:** store and restore the service state through the SKSE serialization interface, including revert on new game or load.
-- **Covers:** ST-4, [§8](PRD.md#8-constraints), success criterion 3.
-- **Interfaces:** SKSE serialization callbacks (save, load, revert) with a unique ID and record types. The `ActorIdResolver` uses the SKSE FormID resolution. NPC defaults are the stats-file base until the API sets values (**placeholder, depends on OQ-1**).
+- **Covers:** ST-3 (race adjustment and default base at load), ST-4, [§8](PRD.md#8-constraints), success criterion 3.
+- **Interfaces:** SKSE serialization callbacks (save, load, revert) with a unique ID and record types. The `ActorIdResolver` uses the SKSE FormID resolution. NPC defaults are the default base plus the race adjustment until the API sets values (**placeholder, depends on OQ-1**).
+  - Base adjustments are persisted per key ([§8](PRD.md#8-constraints)). After a load, the race key of each actor is set again from the stats table (assumption 11), and so is the player's when the race changes; a race whose editor ID has no entry, or whose entry C3 ignored, gets no adjustment. Next to it, `applyDefaultBase` (C4) applies each stat's current default base, so a patch that changed it moves base and start value by the difference ([ST-3](PRD.md#71-stats)). Which game event reports a race change is to be found in this task.
 - **Verification:**
-  - `in-game`: values survive save, quit and load; a new game resets them; going from a save without the plugin and back does not crash.
+  - `in-game`: values survive save, quit and load, including a base adjustment set through the API; a new game resets them; going from a save without the plugin and back does not crash; a patch that changes the player's race adjustment, or a stat's default base, moves base and start value at the next load and leaves the pools unchanged.
   - `log`: the record versions and the actor count are logged at load.
 - **Depends on:** C8, G1.
 
