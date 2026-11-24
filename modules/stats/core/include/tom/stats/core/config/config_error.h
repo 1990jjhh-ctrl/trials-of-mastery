@@ -13,4 +13,13 @@ struct ConfigError
 	std::string message;
 };
 
+// A placeholder value in use, for the log (Stats plan, "Conventions"): its
+// note names the open question, e.g. "TODO(OQ-2): ...".
+struct Placeholder
+{
+	std::string file;  // as in ConfigError
+	std::string key;   // the object that holds the placeholder
+	std::string note;
+};
+
 }
