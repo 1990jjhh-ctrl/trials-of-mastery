@@ -68,7 +68,9 @@ struct Diagnostic
 	};
 
 	Kind        kind = Kind::Loaded;
-	std::string file;    // TableSource::path(); empty for the registered entries
+	std::string file;    // TableSource::path(); empty for the registered entries.
+						 // loadTableFolder() puts a folder here for some read
+						 // errors: "" or "plugins" (see table_folder.h)
 	std::string key;     // JSON pointer, empty when the diagnostic is about the whole file
 	std::string detail;  // Conflict: the earlier file; SameNamePlugins: the plugins;
 						 // SameNameFiles: the file loaded before; Invalid*: the reason
