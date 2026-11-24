@@ -229,7 +229,7 @@ Status levels and domain ownership are defined in the [overview](../PRD.md#5-com
 - **Discoverability:** the stat box opens only by key in the skills menu or on a level-up. Accepted: Trials of Mastery players get the box on every level-up, and the key is in the mod description.
 - **Level-up interception:** replacing the vanilla level-up menu must work with Experience and with mods that change that menu; otherwise level-ups lose their points or show both menus.
 - **Balance:** coefficients, check weights, the learning-speed ceiling (×3), the cost growth and N need playtesting; all are config values.
-- **Broken patches:** players edit the JSON files by hand. An invalid file, or a file with an invalid entry, is skipped and logged, and the remaining files still load.
+- **Broken patches:** players edit the JSON files by hand. An invalid file, or a file with an invalid entry, is skipped and logged, and the remaining files still load. An entry that names a stat no layer defines (for example one a later patch removed) is dropped and logged on its own. A race adjustment for a race no loaded plugin defines is ignored, since no actor can have that race; it is logged at debug level only. An API entry that is invalid in itself (a wrong type, a missing field, an unknown curve) is rejected and logged at registration; one that names an undefined stat is handled as above.
 - **Grind:** stat XP can be farmed (swings, hits, damage, casts, weights). This is accepted by design, as training in the real world is repetition. The mitigations are small XP amounts, exponentially rising costs and the class modifiers, with no rate limits.
 
 ## 10. Open questions
