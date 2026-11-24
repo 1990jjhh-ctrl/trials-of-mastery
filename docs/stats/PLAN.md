@@ -12,7 +12,7 @@ Build the Stats module as an SKSE plugin for Skyrim AE. The formula and configur
 
 ## Conventions used in this plan
 
-- **OQ-n** is the n-th bullet in [PRD §10 Open questions](PRD.md#10-open-questions): OQ-1 NPC values, OQ-2 default effect coefficients, OQ-3 skill XP split, OQ-4 learning-speed curve, OQ-5 check weights, OQ-6 END redirection share, OQ-7 direct activity XP amounts, OQ-8 warn or disable on an incompatible mod. A task that depends on an OQ ships a **placeholder default** in a config file and marks it `TODO(OQ-n)` there and in the log at load. The plan does not answer any OQ.
+- **OQ-n** is the n-th bullet in [PRD §10 Open questions](PRD.md#10-open-questions): OQ-1 NPC values, OQ-2 default effect coefficients, OQ-3 skill XP split, OQ-4 learning-speed curve, OQ-5 check weights, OQ-6 END redirection share, OQ-7 direct activity XP amounts, OQ-8 warn or disable on an incompatible mod, OQ-9 STR XP for unarmed attacks by glove weight, OQ-10 PER XP for fighting. A task that depends on an OQ ships a **placeholder default** in a config file and marks it `TODO(OQ-n)` there and in the log at load. The plan does not answer any OQ.
 - **Verification types:** `unit` means a ctest test that runs on the dev host without the game. `log` means a check of the plugin log (`Documents/My Games/Skyrim Special Edition/SKSE/<plugin>.log`). `in-game` means a manual step list that the task adds to `modules/stats/tests/ingame/<task-id>.md`. In-game checks use the console command `cgf "<Script>.<Function>" ...` against the Papyrus API once A2 exists. Before A2 they use log dumps.
 - **Parallel** means the tasks share no files except one-line additions to a CMake source list.
 - Code style: the user's `write-code` skill applies to all C++ and Papyrus, unless the project states a deviation.
@@ -29,6 +29,7 @@ These are the user's answers to the decisions in the first draft of this plan.
 | D4 | Catch2, nlohmann/json, SimpleIni |
 | D5 | The Creation Kit Papyrus compiler under Wine (`<Skyrim>/Papyrus Compiler/PapyrusCompiler.exe`), with the vanilla sources and `TESV_Papyrus_Flags.flg` from `<Skyrim>/Data/Source/Scripts`. Caprica is not used |
 | D6 | Assumptions confirmed or moved into the PRDs; see below |
+| D7 | The stat box opens with key K and gamepad button Y by default (user decision, 2026-11-24). ST-24 asks for a key and a button in the INI but names neither |
 
 ## Assumptions and open questions
 
@@ -136,11 +137,11 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 #### C3 Settings and tables
 
 - **Goal:** typed configuration from the INI and the four merged tables, the shipped default files and the JSON schemas.
-- **Covers:** ST-3, ST-6 (`r` validation at load), ST-9, ST-14 (mapping data), ST-15 (check and training data), ST-21 (groups), ST-27, ST-28 (incompatible list).
+- **Covers:** ST-3 (default base, race adjustments), ST-6 (`r` validation at load), ST-9, ST-14 (mapping data), ST-15 (check and training data), ST-21 (groups), ST-24 (default key and button), ST-27, ST-28 (incompatible list).
 - **Scope:** `core/config/`, `modules/stats/data/trials-of-mastery-stats.ini`, `data/{stats,skills,actions,incompatible}/_default.json`, `data/schema/{stats,skills,actions,incompatible}.schema.json`.
 - **Interfaces:**
-  - `Settings`: the INI values of ST-27, plus the gamepad button of ST-24.
-  - `StatsTable`: per stat, the group, base and effects (actor-value or named, each with a curve).
+  - `Settings`: the INI values of ST-27, plus the gamepad button of ST-24. The shipped INI sets the stat box key to K and the gamepad button to Y (D7); S2 checks that both are free in the skills menu.
+  - `StatsTable`: per stat, the group, the default base (10 for every core stat, confirmed, ST-3), the race adjustments (ST-3, ST-27) and the effects (actor-value or named, each with a curve). Race adjustments are an object keyed by the race's editor ID (ST-27, `"NordRace": 1`); `RE::TESRace` keeps its editor ID at runtime. Races without an entry get no adjustment. `buildTables` takes the set of race editor IDs the loaded plugins define (empty in unit tests unless given); an adjustment for any other race is ignored and logged at debug level only ([§9](PRD.md#9-risks)), and the file still loads. The shipped default has no race adjustments: the PRD names none.
   - `SkillsTable`: per skill, the primary stat, secondary stat and split.
   - `ActionsTable`: per action, the check inputs with curves, the output mapping (assumption 7) and the training curves per stat.
   - `IncompatibleTable`: per entry, the game plugin names and SKSE plugin names to detect.
@@ -148,12 +149,14 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - The validators check an entry in itself only. Whether a stat it names exists is not their concern; `buildTables` handles that.
   - `loadSettings(text)` and `buildTables(MergeResult...) -> expected<Tables, Errors>`. `buildTables` converts the merged JSON to the typed tables. A skills or actions entry that names a stat no layer of the stats table defines is dropped on its own and logged with the files that set it (from `MergeResult::origins`, empty for an API registration); its file and the rest of the table still load ([§9](PRD.md#9-risks)).
 - **Placeholders:**
-  - Values: effect coefficients (OQ-2), the split ratio (OQ-3), learning-speed curves (OQ-4), check weights and output mappings (OQ-5), redirection share (OQ-6), direct activity XP (OQ-7).
-  - The incompatible default lists Requiem plus a starter set of known RPG stat mods, marked "to be verified" (see [§7.9](PRD.md#79-compatibility)).
+  - Values: effect coefficients (OQ-2), the split ratio (OQ-3), learning-speed curves (OQ-4), check weights and output mappings (OQ-5), redirection share (OQ-6), direct activity XP (OQ-7), STR XP for unarmed attacks by glove weight (OQ-9), PER XP for fighting (OQ-10).
+  - The incompatible default has one entry for each mod that [§7.9](PRD.md#79-compatibility) marks "Detected at load (ST-28)". The game plugin and SKSE plugin names of each entry live only in `incompatible/_default.json`. The names are complete and confirmed from the mods' archives, so the list carries no `TODO` marker.
   - Each placeholder is marked `TODO(OQ-n)` in a `"_todo"` field beside its key, since JSON has no comments.
 - **Verification:** `unit` tests check that:
   - the shipped defaults parse and validate against the schemas;
-  - they contain the default mapping and groups of [ST-27](PRD.md#78-configuration);
+  - they contain the default mapping and groups of [ST-27](PRD.md#78-configuration), a default base of 10 for every core stat, and one incompatible entry for each mod §7.9 marks "Detected at load";
+  - a race adjustment patch for one race leaves the other races without an adjustment, and a non-integer adjustment skips the file;
+  - an adjustment for a race missing from the given race set is ignored with a debug-level log entry only, and the rest of its file loads;
   - each validator rejects a wrong type, a missing required field, an unknown curve and a non-namespaced mod name, and a file with such an entry is skipped as a whole with file and key in the diagnostic ([§9](PRD.md#9-risks));
   - a skills or actions entry that names an undefined stat (never defined, or removed by a later stats patch, or from an API registration) is dropped and logged with its files, while the other entries of its file and the rest of the table load;
   - INI defaults are loaded when keys are missing;
@@ -314,7 +317,7 @@ Not covered:
 
 - **Goal:** load the INI and the four tables at `kDataLoaded`, with a `PluginQuery` backed by the game's loaded-plugin list.
 - **Covers:** ST-3, ST-27, ST-28 (the table is loaded here; K1 acts on it).
-- **Interfaces:** uses C2, C3, C7. A game `PluginQuery` adapter.
+- **Interfaces:** uses C2, C3, C7. A game `PluginQuery` adapter, and the editor IDs of all loaded `RE::TESRace` forms for `buildTables` (C3).
 - **Verification:** `log`. The log lists file order, conflicts, same-name warnings, skipped files and each `TODO(OQ-n)` placeholder in use. A plain test patch and a mod patch in `plugins/` for an inactive plugin behave as C2 specifies.
 - **Depends on:** T1.2, C3, C7.
 
@@ -392,7 +395,7 @@ These are three tasks with no shared files, all after S6a and G1, each **paralle
 - **G9d Mod actions:** the shared `applyTraining` entry for API-registered actions (ST-16). It needs no hook. A1 wires it up.
 - **Covers:** ST-15 (training), ST-16, ST-17 (stat XP per action).
 - **Verification:** `in-game` plus `log`. Each action logs its XP, and the ST-15 example values (dagger, Stendarr's Hammer, 100 septims) come out.
-- **Depends on:** XP amounts depend on OQ-7.
+- **Depends on:** XP amounts depend on OQ-7; G9a's unarmed STR XP by glove weight depends on OQ-9 and its fighting PER XP on OQ-10.
 
 #### G10 Action checks
 
