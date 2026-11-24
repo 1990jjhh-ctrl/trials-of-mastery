@@ -146,7 +146,7 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, detection, sp
 
 ### 7.5 Level-up
 
-- ST-18: The module does not decide when a level-up happens. It reacts to every player level-up, whether vanilla, Experience or another mod triggered it.
+- ST-18: The module does not decide when a level-up happens. It reacts to every player level-up, whether vanilla, Experience or another mod triggered it. Level changes that bypass the game's level-up (the console's `setlevel`, for example) grant no free points and don't advance stats (ST-6), just as vanilla grants them no perk point.
 - ST-19: The stat box replaces the vanilla level-up menu, and the +10 Health/Magicka/Stamina reward is never granted. The stat box opens at the moment the vanilla level-up menu would open. The level-up itself (level and perk point) is applied right away; only spending the free points can wait.
 - ST-20: Each level-up grants free stat points; the number is set in the INI (default 3). Free points go to the accumulated points and do not raise the cost of trained points.
 - ST-21: While free points are unspent, the stat box shows "Level Up" and "Cancel" instead of "OK". "Cancel" closes the box and keeps the points for later; they are stored in the save. "Level Up" shows the number of free points and one button per stat with its current value, plus "Back", and repeats until all points are spent or the player goes back. Registered stats appear like core stats, unless they are opted out of free points (ST-2). When the stats and "Back" do not fit in one box, the box first shows one button per stat group, and each group shows its stats. Each stat belongs to a group, set in the stats file.
