@@ -205,16 +205,19 @@ Status levels and domain ownership are defined in the [overview](../PRD.md#5-com
 | Mod or category | Status | Conflict | Resolution |
 | --- | --- | --- | --- |
 | Requiem | Incompatible | Replaces attributes | Detected at load (ST-28) |
-| RPG stat and attribute mods | Incompatible | Write the same stats with different definitions and effects | Detected at load (ST-28) |
+| RPG stat and attribute mods (Skyrim Attributes Mod., Nexus 200211; CARE, Nexus 148551; Alternate Stat System; SkyRem Grace; Roleplaying in Skyrim - Stats) | Incompatible | Write the same stats with different definitions and effects | Detected at load (ST-28) |
+| Skyrim Skill Uncapper | Incompatible | Changes skill XP alongside the stats' learning speed and training (ST-12, ST-14); skill caps belong to Beyond Mastery or Experience ([overview](../PRD.md#52-domain-ownership)) | Detected at load (ST-28) |
+| Incremental Injuries, Exhaustion - Incremental Fatigue | Incompatible | Change pool maximums and regeneration alongside the stat effects | Detected at load (ST-28) |
 | Experience | Compatible | Changes how and when level-ups happen | Level-ups from Experience grant stat points (ST-18) |
 | Beyond Mastery | Integrated | Raises skill caps above 100 | Skill levels above 100 keep training stats (ST-16) |
 | Custom Skills Framework | Integrated | Adds skills | Its skills train stats once a mapping is registered (ST-16) |
 | Race overhauls (Races of Skyrim) | Compatible | Change race base pools | Pool contributions are added to the pools, never set (ST-10) |
-| Combat overhauls (Valhalla Combat, Wildcat) | Compatible | Damage, stamina and blocking formulas | The combat mod owns formulas; test balance |
+| Valhalla Combat | Incompatible | Changes stamina, damage and blocking in ways that conflict with stat effects | Detected at load (ST-28) |
+| Combat overhauls (Wildcat) | Compatible | Damage, stamina and blocking formulas | The combat mod owns formulas; test balance |
 | Level-up menu mods | Compatible | Change or replace the vanilla level-up menu | The stat box replaces the vanilla level-up menu (ST-19); test which one opens |
 | UI mods (SkyUI) | Compatible | None | The stat box is a native message box (ST-24) |
 
-- ST-28: At load, the module detects the mods in the incompatible file (by default Requiem and known RPG stat mods) through the SKSE plugin list and plugin presence, logs the result, shows a warning and disables itself, unless an INI override allows an unsupported run.
+- ST-28: At load, the module detects the mods in the incompatible file (by default the mods the table above marks as detected at load) through the SKSE plugin list and plugin presence, logs the result, shows a warning and disables itself, unless an INI override allows an unsupported run.
 
 ## 8. Constraints
 
