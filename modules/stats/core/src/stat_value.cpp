@@ -1,5 +1,7 @@
 #include "tom/stats/core/stat_value.h"
 
+#include "saturating.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -22,12 +24,6 @@ constexpr std::int32_t kMaxPoints = std::numeric_limits<std::int32_t>::max();
 [[nodiscard]] bool canPay(double xp, double price)
 {
 	return std::isfinite(price) && price > 0.0 && xp >= price * (1.0 - kCostTolerance);
-}
-
-[[nodiscard]] std::int32_t saturatingAdd(std::int32_t a, std::int32_t b)
-{
-	const std::int64_t sum = std::int64_t{ a } + b;
-	return static_cast<std::int32_t>(std::clamp<std::int64_t>(sum, std::numeric_limits<std::int32_t>::min(), kMaxPoints));
 }
 
 // Rounds a conversion result down to whole points (ST-6), saturated at the
