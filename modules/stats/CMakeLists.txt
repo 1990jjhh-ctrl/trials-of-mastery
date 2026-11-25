@@ -10,6 +10,7 @@ add_library(tom_stats_core STATIC
     core/src/config/tables.cpp
     core/src/curve.cpp
     core/src/curve_parse.cpp
+    core/src/effects.cpp
     core/src/stat_registry.cpp
     core/src/stat_value.cpp
     core/src/table_folder.cpp
@@ -34,6 +35,7 @@ if(TOM_BUILD_TESTS)
         tests/unit/curve_parse_test.cpp
         tests/unit/curve_test.cpp
         tests/unit/default_tables_test.cpp
+        tests/unit/effects_test.cpp
         tests/unit/json_schema.cpp
         tests/unit/settings_test.cpp
         tests/unit/stat_registry_test.cpp

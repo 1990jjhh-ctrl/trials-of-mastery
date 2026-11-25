@@ -37,7 +37,7 @@ constexpr std::array<std::string_view, 5> kNamedEffectNames{ "CritChancePhysical
 	"DamageRedirection", "MagicDamage" };
 
 constexpr std::array<std::string_view, 4> kStatKeys{ "group", "base", "raceAdjustments", "effects" };
-constexpr std::array<std::string_view, 3> kEffectKeys{ "actorValue", "named", "curve" };
+constexpr std::array<std::string_view, 4> kEffectKeys{ "actorValue", "named", "input", "curve" };
 constexpr std::array<std::string_view, 3> kSkillKeys{ "primary", "secondary", "primaryShare" };
 constexpr std::array<std::string_view, 2> kActionKeys{ "check", "training" };
 constexpr std::array<std::string_view, 3> kCheckKeys{ "stats", "skills", "result" };
@@ -122,6 +122,31 @@ std::optional<std::variant<ActorValueTarget, NamedEffect>> effectTarget(TableRea
 	return known;
 }
 
+// The input of a named effect's curve (ST-9); relative when the effect sets
+// none. Only named effects may set it.
+std::optional<CurveInput> curveInput(TableReader& reader, const json& effect, const Pointer& path, bool named)
+{
+	const auto* input = reader.field(effect, path, "input", false);
+	if (input == nullptr) {
+		return CurveInput::Relative;
+	}
+	if (!named) {
+		reader.fail(path / "input", "is only allowed on a named effect");
+		return std::nullopt;
+	}
+	const auto text = reader.text(input, path / "input");
+	if (text == "relative") {
+		return CurveInput::Relative;
+	}
+	if (text == "absolute") {
+		return CurveInput::Absolute;
+	}
+	if (text) {
+		reader.fail(path / "input", "must be 'relative' or 'absolute'");
+	}
+	return std::nullopt;
+}
+
 std::optional<Effect> readEffect(TableReader& reader, const json& value, const Pointer& path)
 {
 	if (!reader.expectObject(value, path)) {
@@ -133,7 +158,11 @@ std::optional<Effect> readEffect(TableReader& reader, const json& value, const P
 	if (!target || !curve) {
 		return std::nullopt;
 	}
-	return Effect{ std::move(*target), *curve };
+	const auto input = curveInput(reader, value, path, std::holds_alternative<NamedEffect>(*target));
+	if (!input) {
+		return std::nullopt;
+	}
+	return Effect{ std::move(*target), *curve, *input };
 }
 
 std::map<std::string, Effect> readEffects(TableReader& reader, const json* value, const Pointer& path)

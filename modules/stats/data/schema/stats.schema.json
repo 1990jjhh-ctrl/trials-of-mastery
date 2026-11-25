@@ -35,6 +35,9 @@
     },
     "effect": {
       "description": "An actor-value effect (ST-10) or a named effect of the module (ST-11 to ST-13), with its curve.",
+      "oneOf": [{ "$ref": "#/$defs/actorValueEffect" }, { "$ref": "#/$defs/namedEffect" }]
+    },
+    "actorValueEffect": {
       "type": "object",
       "properties": {
         "actorValue": {
@@ -42,14 +45,26 @@
           "type": "string",
           "minLength": 1
         },
+        "curve": { "$ref": "common.schema.json#/$defs/curve" },
+        "_todo": { "$ref": "common.schema.json#/$defs/todo" }
+      },
+      "required": ["actorValue", "curve"],
+      "additionalProperties": false
+    },
+    "namedEffect": {
+      "type": "object",
+      "properties": {
         "named": {
           "enum": ["CritChancePhysical", "CritChanceMagic", "LearningSpeed", "DamageRedirection", "MagicDamage"]
+        },
+        "input": {
+          "description": "The curve's input (ST-9): \"relative\" is the effective stat minus the start value, \"absolute\" the effective stat. Without it, relative.",
+          "enum": ["relative", "absolute"]
         },
         "curve": { "$ref": "common.schema.json#/$defs/curve" },
         "_todo": { "$ref": "common.schema.json#/$defs/todo" }
       },
-      "required": ["curve"],
-      "oneOf": [{ "required": ["actorValue"] }, { "required": ["named"] }],
+      "required": ["named", "curve"],
       "additionalProperties": false
     }
   }

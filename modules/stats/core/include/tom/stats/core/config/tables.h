@@ -45,10 +45,19 @@ struct ActorValueTarget
 	bool operator==(const ActorValueTarget&) const = default;
 };
 
+// What a named effect's curve takes as x (ST-9). Actor-value effects always
+// take the relative input (ST-10).
+enum class CurveInput
+{
+	Relative,  // effective stat - start value
+	Absolute,  // effective stat
+};
+
 struct Effect
 {
 	std::variant<ActorValueTarget, NamedEffect> target;
 	Curve                                       curve;
+	CurveInput                                  input = CurveInput::Relative;
 };
 
 // ST-3, ST-9, ST-21.

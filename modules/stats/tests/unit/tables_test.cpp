@@ -16,6 +16,7 @@ using nlohmann::json;
 using tom::stats::ActorValueTarget;
 using tom::stats::buildTables;
 using tom::stats::ConfigError;
+using tom::stats::CurveInput;
 using tom::stats::Diagnostic;
 using tom::stats::entryValidator;
 using tom::stats::isNamespaced;
@@ -126,7 +127,8 @@ TEST_CASE("a stat entry gives its group, base, race adjustments and effects", "[
 	auto stats = coreStats();
 	stats["CON"] = { { "group", "Warrior" }, { "base", 12 }, { "raceAdjustments", { { "NordRace", 1 } } },
 		{ "effects", { { "Health", { { "actorValue", "Health" }, { "curve", kLinear } } },
-						 { "Crit", { { "named", "CritChancePhysical" }, { "curve", kLinear } } } } } };
+						 { "Crit", { { "named", "CritChancePhysical" }, { "curve", kLinear } } },
+						 { "Learning", { { "named", "LearningSpeed" }, { "input", "absolute" }, { "curve", kLinear } } } } } };
 	auto tables = minimal();
 	tables.stats = merge(Table::Stats, { { "_default.json", stats } });
 
@@ -137,10 +139,13 @@ TEST_CASE("a stat entry gives its group, base, race adjustments and effects", "[
 	CHECK(con.group == "Warrior");
 	CHECK(con.defaultBase == 12);
 	CHECK(con.raceAdjustments == std::map<std::string, std::int32_t>{ { "NordRace", 1 } });
-	REQUIRE(con.effects.size() == 2);
+	REQUIRE(con.effects.size() == 3);
 	CHECK(std::get<ActorValueTarget>(con.effects.at("Health").target).name == "Health");
 	CHECK(std::get<LinearCurve>(con.effects.at("Health").curve).a == 2.0);
 	CHECK(std::get<NamedEffect>(con.effects.at("Crit").target) == NamedEffect::CritChancePhysical);
+	CHECK(con.effects.at("Health").input == CurveInput::Relative);
+	CHECK(con.effects.at("Crit").input == CurveInput::Relative);
+	CHECK(con.effects.at("Learning").input == CurveInput::Absolute);
 }
 
 TEST_CASE("an integer may be written with a zero fraction", "[tables]")
@@ -249,6 +254,17 @@ TEST_CASE("an effect needs exactly one target, a known named effect and a curve"
 	CHECK(rejection(Table::Stats, "STR", effect({ { "curve", kLinear } })) == "/STR/effects/E: needs exactly one of 'actorValue' and 'named'");
 	CHECK(rejection(Table::Stats, "STR", effect({ { "named", "Flying" }, { "curve", kLinear } })) == "/STR/effects/E/named: is not a named effect of the module");
 	CHECK(rejection(Table::Stats, "STR", effect({ { "actorValue", "Health" } })) == "/STR/effects/E/curve: is missing");
+}
+
+TEST_CASE("only a named effect sets its curve input, as relative or absolute", "[tables][validator]")
+{
+	const auto effect = [](const json& value) { return json{ { "base", 10 }, { "effects", { { "E", value } } } }; };
+
+	CHECK(rejection(Table::Stats, "STR", effect({ { "named", "MagicDamage" }, { "input", "absolute" }, { "curve", kLinear } })).empty());
+	CHECK(rejection(Table::Stats, "STR", effect({ { "named", "MagicDamage" }, { "input", "relative" }, { "curve", kLinear } })).empty());
+	CHECK(rejection(Table::Stats, "STR", effect({ { "named", "MagicDamage" }, { "input", "total" }, { "curve", kLinear } })) == "/STR/effects/E/input: must be 'relative' or 'absolute'");
+	CHECK(rejection(Table::Stats, "STR", effect({ { "named", "MagicDamage" }, { "input", 1 }, { "curve", kLinear } })) == "/STR/effects/E/input: must be a non-empty text");
+	CHECK(rejection(Table::Stats, "STR", effect({ { "actorValue", "Health" }, { "input", "absolute" }, { "curve", kLinear } })) == "/STR/effects/E/input: is only allowed on a named effect");
 }
 
 TEST_CASE("unknown keys are rejected; _todo must be text", "[tables][validator]")
