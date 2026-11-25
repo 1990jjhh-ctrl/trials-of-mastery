@@ -56,7 +56,9 @@ These are the user's answers to the decisions in the first draft of this plan.
 8. **Registered stats whose owner is missing at load:** their saved data is kept but dormant. It is not shown and has no effects, and it comes back when the owner registers again. The PRD does not cover this case.
 9. **Custom Skills Framework (CSF):** how the module learns about a CSF skill level-up is not known (spike S7). Until then ST-16 is covered for vanilla skills, skills above 100 and level-ups reported through the API.
 10. **Game version (confirmed, [overview §4](../PRD.md#4-shared-constraints)):** 1.6.x and newer, tested on 1.7.104. T1.2 checks the Address Library and CommonLibSSE-NG support for 1.7.104.
-11. **Base adjustments ([ST-3](PRD.md#71-stats)):** an actor's stored base already contains its adjustments, and each adjustment is stored under its key. Setting a key changes base and start value by the difference to the key's old value; removing a key takes its value off both. The race adjustment is one such key, owned by the module and not settable through the API. When the stats table's race adjustment for an actor's race differs from the stored one (a patch changed, or the actor changed race), the module sets the key again, so base and start value move together. A changed **default base** reaches existing actors the same way, as ST-3 and [§8](PRD.md#8-constraints) define: each actor stores the default base last applied per stat, and the module applies the difference.
+11. **Base adjustments ([ST-3](PRD.md#71-stats)):** an actor's stored base already contains its adjustments, and each adjustment is stored under its key. Setting a key changes the base by the difference to the key's old value; removing a key takes its value off the base. The race adjustment is one such key, owned by the module and not settable through the API. When the stats table's race adjustment for an actor's race differs from the stored one (a patch changed, or the actor changed race), the module sets the key again, so the base and with it the effects change by the difference (ST-3). A changed **default base** reaches existing actors the same way, as ST-3 and [§8](PRD.md#8-constraints) define: each actor stores the default base last applied per stat, and the module moves the base by the difference.
+12. **Effect reference ([ST-9, ST-10](PRD.md#73-effects)):** relative effects measure from the default base last applied to the actor's stat (`ActorStats::defaultBases`, C4), which is the stored form of "default base" for an existing actor. A stat with no default base applied counts it as 0, like any missing value in `ActorStats`; So C7 never gives a stat a non-zero base without `initStat`, and C8 restores the default base last applied together with every base.
+13. **Open: default-base patch at a multiplier other than 1.** ST-3 says a patch that changes a default base leaves relative effects unchanged, since base and default base move together. With `x = effective − default base` and `effective = (base + …) · multiplier + modifier`, a change `d` of both moves `x` by `d · (multiplier − 1)`, so this holds only at multiplier 1. The plan checks it at multiplier 1 only and does not settle the other case; it is for the user to decide in the PRD (ST-3, ST-8, MA-3).
 
 ## Tasks
 
@@ -167,14 +169,14 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 #### C4 Stat values, cost and progression
 
 - **Goal:** per-stat and per-actor state with cost, XP gain with carry-over, advance, ascend and effective value.
-- **Covers:** ST-1, ST-2 (registry, free-point opt-out), ST-3 (base and start value), ST-4, ST-5, ST-6 (math), ST-7, ST-8.
+- **Covers:** ST-1, ST-2 (registry, free-point opt-out), ST-3 (base and default base), ST-4, ST-5, ST-6 (math), ST-7, ST-8.
 - **Interfaces:**
   - `StatId`. `StatRegistry` holds the core stats plus registered ones, with a dormant flag (assumption 8) and a flag for registered stats opted out of free level-up points ([ST-2](PRD.md#71-stats), for example LUC, [LU-1](../luck/PRD.md)). `registerStat` (already implemented) gains that flag as a parameter, defaulting to "gets free points"; core stats always get them.
   - `StatValue { int32 base, accumulated, active; double xp; }`.
-  - `ActorStats`: stat values, start values, multiplier, `map<key,int32>` modifiers per stat and `map<key,int32>` base adjustments per stat (assumption 11).
-  - `initStat(ActorStats&, StatId, int32 defaultBase)`: base and start value become the default base plus the stat's adjustments (ST-3).
-  - `setBaseAdjustment(ActorStats&, StatId, key, int32)` and `removeBaseAdjustment(ActorStats&, StatId, key)`: change base and start value by the difference (ST-3).
-  - `ActorStats` also stores the default base last applied per stat; `initStat` sets it. `applyDefaultBase(ActorStats&, StatId, int32 defaultBase)` moves base and start value by the difference to it and stores the new value (ST-3).
+  - `ActorStats`: stat values, multiplier, `map<key,int32>` modifiers per stat and `map<key,int32>` base adjustments per stat (assumption 11).
+  - `initStat(ActorStats&, StatId, int32 defaultBase)`: the base becomes the default base plus the stat's adjustments (ST-3).
+  - `setBaseAdjustment(ActorStats&, StatId, key, int32)` and `removeBaseAdjustment(ActorStats&, StatId, key)`: change the base by the difference (ST-3).
+  - `ActorStats` also stores the default base last applied per stat; `initStat` sets it. `applyDefaultBase(ActorStats&, StatId, int32 defaultBase)` moves the base by the difference to it and stores the new value (ST-3). The stored value is the reference of the relative effects (assumption 12, C5).
   - `double cost(double r, int32 k)` returns `+inf` on overflow.
   - `GainResult addXp(StatValue&, double xp, double r)`.
   - `advance(StatValue&)`.
@@ -182,34 +184,62 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - `double effective(const ActorStats&, StatId)`.
 - **Verification:** `unit` tests for the cost formula and overflow, several points from one large XP amount with carry-over, advance, ascend with rounding down (2.9 gives 2), effective value with several modifier keys and removal of one key, and no clamp at 100. For base adjustments ([ST-3](PRD.md#71-stats)):
   - a race +1 and a class −2 on a default base of 10 give a base of 9;
-  - adding, changing and removing an adjustment after creation moves base and start value by the same amount, so `effective − start` is unchanged at multiplier 1;
-  - after an ascend, removing an adjustment keeps the ascended points in the base and leaves the start value at the default base plus the remaining adjustments;
-  - `applyDefaultBase` from 10 to 12 moves base and start value by +2 and stores 12; applying 12 again changes nothing.
-- **Depends on:** T1.1. **Parallel** with C1, C2. `StatValue`, `ActorStats` and `StatRegistry` exist already; the base adjustments are an amendment.
+  - adding, changing and removing an adjustment after creation moves the base by the adjustment's difference and leaves the stored default base alone;
+  - after an ascend, removing an adjustment keeps the ascended points in the base;
+  - `applyDefaultBase` from 10 to 12 moves the base by +2 and stores 12; applying 12 again changes nothing.
+- **Depends on:** T1.1. **Parallel** with C1, C2. `StatValue`, `ActorStats` and `StatRegistry` exist already; the base adjustments are an amendment. The start value this task first stored is removed again by C5a.
 
 #### C5 Effect math
 
 - **Goal:** compute effect values and the per-actor-value deltas that the game layer applies.
 - **Covers:** ST-9 (named effects on any stat, curve input), ST-10, ST-11, ST-12, ST-13 (math).
 - **Interfaces:**
-  - `avContribution(effect, effective, start)` per ST-10.
+  - `avContribution(curve, effective, defaultBase)` per ST-10, with the default base last applied as the reference (assumption 12).
   - `ContributionLedger`: the last contribution per actor and actor value. `vector<AvDelta> updateContributions(ledger, actor, tables)`.
   - `RedirectSplit splitDamage(damage, share, poolAvailable) -> { fromPool, toHealth }`.
   - `double learningBonus(actor, statsTable)`: the `LearningSpeed` terms of every stat that lists the effect (ST-9), summed and then clamped to the ST-12 floor and cap. The clamp applies to the stat bonus only. Outside bonuses are applied by G6, not here.
   - `double baseCritChance(actor, statsTable, kind)`: the terms of every stat that lists the crit effect of that kind (ST-13).
   - `CritShiftRegistry` with `set(owner, CritShift)` and `remove(owner)`, where `CritShift = function<double(actor, kind, baseChance)>` returns a shift; the actor lets the luck module read LUC (LU-7). `double critChance(actor, statsTable, registry, kind)` is `baseCritChance` plus the sum of all shifts.
-  - The named effects' curve input (ST-9): an optional `input` field per named effect in the stats file, `"relative"` (`effective − start`, the default) or `"absolute"` (the effective stat). This amends C3's schema, reader and `Effect`. The END share for `splitDamage` is the `DamageRedirection` term computed the same way.
+  - The named effects' curve input (ST-9): an optional `input` field per named effect in the stats file, `"relative"` (`curve(x) − curve(0)` with `x = effective − default base`, the default) or `"absolute"` (`curve(effective)`). This amends C3's schema, reader and `Effect`. The END share for `splitDamage` is the `DamageRedirection` term computed the same way.
 - **Verification:** `unit` tests check that:
-  - a new character (effective = start) gets a zero contribution;
+  - a new character without adjustments (effective = default base) gets a zero contribution, and one with a race +2 gets `curve(2) − curve(0)`;
   - a stat change yields only the difference;
   - ascending shrinks the contributions;
   - the damage split is correct with an empty pool, a short pool and a full pool;
   - a curve set in the file to exceed the cap still yields at most the ST-12 cap, and a malus stops at −100 %;
-  - a named effect with `input` absolute and one with relative (or without `input`) take the effective stat and `effective − start`;
+  - a named effect with `input` absolute gives `curve(effective)`, and one with relative (or without `input`) gives `curve(effective − default base) − curve(0)`;
   - a named effect on a stat other than the default ones (for example a registered stat) adds to the sum;
   - crit shifts from two owners add up and receive the current base crit chance and the kind, and removing an owner removes its shift;
   - a stats file with an `input` value other than `relative` or `absolute`, or with `input` on an actor-value effect, is skipped as invalid (C2, C3).
 - **Depends on:** C1, C3, C4. Placeholders depend on OQ-2, OQ-4, OQ-6.
+- **Status:** merged with the start value as the reference; C5a brings it in line with the current ST-3, ST-9, ST-10 and ST-13.
+
+#### C5a Effects measured from the default base (C4/C5 amendment)
+
+- **Goal:** bring the merged C4 and C5 code, the stats schema, the default stats file and their tests in line with the PRD change of PR #23: relative effects measure from the default base, not from a start value, and the default crit effects are absolute.
+- **Covers:** ST-3 (adjustments change effects; a default-base patch does not), ST-9 (relative and absolute named effects), ST-10, ST-13 (absolute default crit), [§8](PRD.md#8-constraints) (no start value in the save).
+- **Scope:**
+  - `modules/stats/core/include/tom/stats/core/actor_stats.h`, `modules/stats/core/src/actor_stats.cpp`;
+  - `modules/stats/core/include/tom/stats/core/effects.h`, `modules/stats/core/src/effects.cpp`;
+  - `modules/stats/core/include/tom/stats/core/config/tables.h` (the comment on `CurveInput::Relative` only);
+  - `modules/stats/data/schema/stats.schema.json` (the `input` description only);
+  - `modules/stats/data/stats/_default.json` (`"input": "absolute"` on DEX's `CritChancePhysical` and `CritChanceMagic`; the curves and their `TODO(OQ-2)` stay as they are. Taken as absolute, the placeholder asymptotic curve gives DEX 10 a crit chance of about 4.76 instead of 0; whether that is wanted is part of OQ-2, not of this task);
+  - `modules/stats/tests/unit/actor_stats_test.cpp`, `effects_test.cpp`, `default_tables_test.cpp`.
+- **Interfaces:**
+  - `ActorStats::startValues` is removed. `initStat`, `setBaseAdjustment`, `removeBaseAdjustment` and `applyDefaultBase` keep their signatures and move only the base; `initStat` and `applyDefaultBase` still store the default base last applied in `ActorStats::defaultBases`.
+  - `avContribution(const Curve&, double effective, double defaultBase)`: same shape, the third parameter is the default base (`curve(effective − defaultBase) − curve(0)`).
+  - `updateContributions` and `namedEffectValue` read the reference from `ActorStats::defaultBases` (missing counts as 0, assumption 12). A relative named effect adds `curve(x) − curve(0)`, as an actor-value effect does; an absolute one adds `curve(effective)`.
+  - `CurveInput` keeps its two values; only its comment and the schema description change from "start value" to "default base".
+- **Verification:** `unit` tests check that:
+  - an actor with `initStat(10)` and no adjustments gets no contribution and a relative named effect of 0, also for a curve with `curve(0) ≠ 0` (`b`, `S`);
+  - a race adjustment of +2 set before `initStat(10)` gives an actor-value contribution and a relative named effect of `curve(2) − curve(0)` at creation;
+  - adding a +2 adjustment after creation yields an `AvDelta` of `curve(2) − curve(0)` from `updateContributions`, and removing it yields the negative of that;
+  - `applyDefaultBase` from 10 to 12 at multiplier 1 moves the base by +2 and leaves `updateContributions` with no delta and relative named effects unchanged;
+  - a relative named effect with a curve that is not 0 at 0 subtracts `curve(0)`;
+  - the shipped DEX crit effects parse as `CurveInput::Absolute`, and `baseCritChance` at DEX 12 is `curve(12)` with no reference subtracted;
+  - `ActorStats` has no start value (the tests compile without `startValues`), so C8 has nothing of it to persist;
+  - `scripts/test.sh`, the format check and lint pass ([CONTRIBUTING.md#workflow](../../CONTRIBUTING.md#workflow)).
+- **Depends on:** C4, C5. **Must merge before C7.**
 
 #### C6 Training, checks and XP modifiers
 
@@ -239,12 +269,14 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - `StatsService` operations:
     - read values; `addXp`; `setValues`;
     - `setModifier` and `removeModifier`; `setMultiplier`;
-    - `setBaseAdjustment(actor, stat, key, value)` and `removeBaseAdjustment(actor, stat, key)` (ST-3, ST-26); the module's race key is rejected; the returned `AvDelta`s are empty at multiplier 1, since base and start value move together;
+    - `setBaseAdjustment(actor, stat, key, value)` and `removeBaseAdjustment(actor, stat, key)` (ST-3, ST-26); the module's race key is rejected; the returned `AvDelta`s carry the effect change of the adjustment's difference (ST-3, ST-10);
     - `setR` (one value per save, player only, see ST-6 and [§5](PRD.md#5-scope)); `setN`;
     - `claimAdvancing(owner)`; `advance` and `advanceAll`; `ascend`;
     - `onPlayerLevelUp(newLevel)`: exactly one real level-up, the game's own level-up flow (G5). It grants the free points of one level and advances when `newLevel` is a multiple of N (ST-6). It takes no previous level and computes no level difference, so a level change that bypassed the level-up (`setlevel` and the like) is never counted, neither as points nor as advancing (ST-18). G5 is its only caller;
-    - `setCritShift(owner, CritShift)` and `removeCritShift(owner)` (ST-13, ST-26), over C5's `CritShiftRegistry`;
-    - `claimPointAssignment(owner)`; `assignFreePoint(stat)`, which rejects a stat opted out of free points (ST-2, ST-20), also for the module that claimed point assignment.
+    - `setCritShift(owner, CritShift)` and `removeCritShift(owner)` (ST-13, ST-26), over C5's `CritShiftRegistry`. `CritShiftRegistry::sum` calls the owners' functions while it iterates its map, so a shift that calls `setCritShift` or `removeCritShift` would invalidate the iteration: the service calls the shifts on a snapshot of the registry, or rejects `set` and `remove` while a sum runs;
+    - `claimPointAssignment(owner)`; `assignFreePoint(stat)`, which rejects a stat opted out of free points (ST-2, ST-20), also for the module that claimed point assignment, and a dormant stat: `StatRegistry::getsFreePoints` is true for a dormant stat that has not opted out, so the service checks `isDormant` as well (assumption 8).
+  - Effects: the service passes only the active stats (`StatRegistry::activeStats`, not dormant ones) to `updateContributions`, `namedEffectValue` and the functions built on it (assumption 8).
+  - A stat gets a base only through `initStat`, also for a stat registered mid-game and in `setValues`, so its default base last applied is set (assumption 12); without it the whole base would count as above the reference.
   - `EventSink` interface with the five ST-26 events.
   - A stat change returns the `AvDelta`s from C5.
 - **Verification:** `unit` tests check that:
@@ -254,11 +286,14 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - auto-advance follows ST-6 and stops after a claim;
   - `setN` changes the advance interval;
   - `setR` with a value that [ST-6](PRD.md#72-xp-and-cost) rejects keeps the previous value and logs the rejection;
-  - a base adjustment added and removed through the service moves base and start value and yields no pool change at multiplier 1; the race key is rejected;
+  - a base adjustment of +2 added through the service yields the pool `AvDelta`s of `curve(2) − curve(0)`, and removing it yields their negatives; the race key is rejected;
+  - a crit shift that removes itself or sets another shift during a call neither crashes nor changes the sum of that call;
+  - `assignFreePoint` on a dormant stat is rejected, and a dormant stat's effects are left out of the pools;
+  - a stat registered mid-game starts with its default base applied, and its relative effects are 0 at that base;
   - events fire in the right order with the right payloads;
   - unspent points stay pending;
   - `assignFreePoint` on an opted-out registered stat is rejected and leaves the points pending; the stat still gains XP and points from training.
-- **Depends on:** C4, C5, C6.
+- **Depends on:** C4, C5, C5a, C6.
 
 #### C8 Persistence format
 
@@ -266,7 +301,8 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 - **Covers:** [§8 persistence constraint](PRD.md#8-constraints), success criterion 3 (format).
 - **Interfaces:** `serialize(const StatsService&) -> bytes`, `deserialize(bytes, ActorIdResolver&) -> expected<State>`. `ActorIdResolver` maps saved actor IDs to current ones (FormID remap) or drops them. The format has a version field.
 - **Verification:** `unit` tests check that:
-  - all persisted fields of §8 round-trip, including base adjustments per key, the default base last applied per actor and stat, dormant stats and N;
+  - all persisted fields of §8 round-trip, including base adjustments per key, the default base last applied per actor and stat, dormant stats and N; there is no start value to store (C5a);
+  - a restored stat with a base always has its default base last applied restored with it, so its effects keep their reference (assumption 12);
   - unresolved actors are dropped and logged;
   - an older format version is either read or rejected explicitly.
 - **Depends on:** C7.
@@ -346,9 +382,9 @@ Not covered:
 - **Goal:** store and restore the service state through the SKSE serialization interface, including revert on new game or load.
 - **Covers:** ST-3 (race adjustment and default base at load), ST-4, [§8](PRD.md#8-constraints), success criterion 3.
 - **Interfaces:** SKSE serialization callbacks (save, load, revert) with a unique ID and record types. The `ActorIdResolver` uses the SKSE FormID resolution. NPC defaults are the default base plus the race adjustment until the API sets values (**placeholder, depends on OQ-1**).
-  - Base adjustments are persisted per key ([§8](PRD.md#8-constraints)). After a load, the race key of each actor is set again from the stats table (assumption 11), and so is the player's when the race changes; a race whose editor ID has no entry, or whose entry C3 ignored, gets no adjustment. Next to it, `applyDefaultBase` (C4) applies each stat's current default base, so a patch that changed it moves base and start value by the difference ([ST-3](PRD.md#71-stats)). Which game event reports a race change is to be found in this task.
+  - Base adjustments are persisted per key ([§8](PRD.md#8-constraints)). After a load, the race key of each actor is set again from the stats table (assumption 11), and so is the player's when the race changes; a race whose editor ID has no entry, or whose entry C3 ignored, gets no adjustment. Next to it, `applyDefaultBase` (C4) applies each stat's current default base, so a patch that changed it moves the base by the difference ([ST-3](PRD.md#71-stats)). A new game's `initStat` with a race adjustment changes the pools from creation on (ST-10); G3 applies those deltas. Which game event reports a race change is to be found in this task.
 - **Verification:**
-  - `in-game`: values survive save, quit and load, including a base adjustment set through the API; a new game resets them; going from a save without the plugin and back does not crash; a patch that changes the player's race adjustment, or a stat's default base, moves base and start value at the next load and leaves the pools unchanged.
+  - `in-game`: values survive save, quit and load, including a base adjustment set through the API; a new game resets them; going from a save without the plugin and back does not crash; a patch that changes the player's race adjustment moves the base and the pools by the difference at the next load; a patch that changes a stat's default base moves the base and leaves the pools unchanged (at multiplier 1, assumption 13); a new character of a race with an adjustment starts with pools changed by `curve(adjustment) − curve(0)`.
   - `log`: the record versions and the actor count are logged at load.
 - **Depends on:** C8, G1.
 
@@ -405,7 +441,13 @@ Not covered:
 
 - **Goal:** apply the DEX base crit chance to physical and magic attacks, with the additive shift slot for other modules.
 - **Covers:** ST-13.
-- **Verification:** `in-game` plus `log`. The logged crit chance follows the curve, and over many hits the crit rate is close to it.
+- **Notes:**
+  - The default crit effects are absolute (C5a), so the chance follows the effective stat, not its distance to the default base.
+  - `critChance` can be infinite or NaN (a curve or a shift from another module). G8 does not hand such a value to the game: it falls back to the base crit chance, or to no crit if that is not finite either, and logs it. Whether to also clamp to [0, 100 %] is for the user.
+  - The crit chance's unit (fraction or percent, and how it maps to the game's crit value) is part of OQ-2. G8 does not pick it silently: it is raised with the user before G8 starts, and the placeholder curve's `TODO(OQ-2)` names it.
+- **Verification:**
+  - `in-game` plus `log`: the logged crit chance follows the curve, and over many hits the crit rate is close to it.
+  - `unit` or `log`: a shift returning NaN or infinity does not reach the game and is logged.
 - **Depends on:** S5, G1. The curve depends on OQ-2.
 
 #### G9 Action training hooks
@@ -467,6 +509,7 @@ Three tasks, all after S6b and C6, each **parallel**:
   - Its functions map one to one onto `StatsService`, except `onPlayerLevelUp`, which G5 alone calls and the API does not expose (ST-18). Event callbacks are registered per event type.
   - Registrations are accepted until `kDataLoaded` and merged per assumption 3. Each registered table entry (stat, skill mapping, action) first runs through the C3 validator of its table; an entry invalid in itself (a wrong type, a missing field, an unknown curve) is rejected, the call returns an error and the rejection is logged ([§9](PRD.md#9-risks)). An entry that names an undefined stat is accepted here and dropped by `buildTables` like any other (C3).
   - Calls are allowed only on the main thread, and the header documents this.
+  - `ActorStats` carries no actor identity, but a crit shift ([LU-7](../luck/PRD.md)) needs the actor to read its LUC and favour. A1 hands the luck module the actor: either a reverse lookup from `ActorStats` to the actor in the plugin, or an opaque actor view passed to the shift instead of `ActorStats`. Which one is decided in A1; the second changes C5's `CritShift` signature.
 - **Verification:** `unit` for the version check and argument validation in the core part, including a registered entry that its C3 validator rejects: the call fails, the rejection is logged and the entry does not reach the merge; a registered skill mapping naming an undefined stat is accepted and later dropped by `buildTables`. A3 does the end-to-end check.
 - **Depends on:** C7, G1.
 
@@ -511,7 +554,7 @@ Three tasks, all after S6b and C6, each **parallel**:
 
 ### Order and parallelism
 
-- Sequential path: T1.1, then C4 and C1 and C2, then C3, C5, C6, C7, C8, G1, G2, G3, G5, U1, A1, A2, A3, K1, V1.
+- Sequential path: T1.1, then C4 and C1 and C2, then C3, C5, C5a, C6, C7, C8, G1, G2, G3, G5, U1, A1, A2, A3, K1, V1.
 - Parallel tracks:
   - T1.2 and the spikes S1 to S8 run alongside Phase 2. S8 waits on the Wine Mono user action.
   - C1, C2 and C4 run in parallel, and so do C8 and C9.
