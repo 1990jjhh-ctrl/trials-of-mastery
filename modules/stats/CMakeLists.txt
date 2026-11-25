@@ -12,6 +12,7 @@ add_library(tom_stats_core STATIC
     core/src/curve_parse.cpp
     core/src/effects.cpp
     core/src/stat_registry.cpp
+    core/src/stats_service.cpp
     core/src/stat_value.cpp
     core/src/table_folder.cpp
     core/src/table_merge.cpp
@@ -39,6 +40,7 @@ if(TOM_BUILD_TESTS)
         tests/unit/json_schema.cpp
         tests/unit/settings_test.cpp
         tests/unit/stat_registry_test.cpp
+        tests/unit/stats_service_test.cpp
         tests/unit/stat_value_test.cpp
         tests/unit/table_folder_test.cpp
         tests/unit/table_merge_test.cpp
