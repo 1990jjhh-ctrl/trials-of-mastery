@@ -190,19 +190,25 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 #### C5 Effect math
 
 - **Goal:** compute effect values and the per-actor-value deltas that the game layer applies.
-- **Covers:** ST-10, ST-11, ST-12, ST-13 (math).
+- **Covers:** ST-9 (named effects on any stat, curve input), ST-10, ST-11, ST-12, ST-13 (math).
 - **Interfaces:**
   - `avContribution(effect, effective, start)` per ST-10.
   - `ContributionLedger`: the last contribution per actor and actor value. `vector<AvDelta> updateContributions(ledger, actor, tables)`.
   - `RedirectSplit splitDamage(damage, share, poolAvailable) -> { fromPool, toHealth }`.
-  - `double learningBonus(actor)`: the INT and PER curve terms, summed and then capped at the ST-12 hard cap. The cap applies to the stat bonus only. Outside bonuses are applied by G6, not here.
-  - `double baseCritChance(actor, kind)`, with an additive shift slot for other modules (luck).
+  - `double learningBonus(actor, statsTable)`: the `LearningSpeed` terms of every stat that lists the effect (ST-9), summed and then clamped to the ST-12 floor and cap. The clamp applies to the stat bonus only. Outside bonuses are applied by G6, not here.
+  - `double baseCritChance(actor, statsTable, kind)`: the terms of every stat that lists the crit effect of that kind (ST-13).
+  - `CritShiftRegistry` with `set(owner, CritShift)` and `remove(owner)`, where `CritShift = function<double(actor, kind, baseChance)>` returns a shift; the actor lets the luck module read LUC (LU-7). `double critChance(actor, statsTable, registry, kind)` is `baseCritChance` plus the sum of all shifts.
+  - The named effects' curve input (ST-9): an optional `input` field per named effect in the stats file, `"relative"` (`effective − start`, the default) or `"absolute"` (the effective stat). This amends C3's schema, reader and `Effect`. The END share for `splitDamage` is the `DamageRedirection` term computed the same way.
 - **Verification:** `unit` tests check that:
   - a new character (effective = start) gets a zero contribution;
   - a stat change yields only the difference;
   - ascending shrinks the contributions;
   - the damage split is correct with an empty pool, a short pool and a full pool;
-  - a curve set in the file to exceed the cap still yields at most the ST-12 cap.
+  - a curve set in the file to exceed the cap still yields at most the ST-12 cap, and a malus stops at −100 %;
+  - a named effect with `input` absolute and one with relative (or without `input`) take the effective stat and `effective − start`;
+  - a named effect on a stat other than the default ones (for example a registered stat) adds to the sum;
+  - crit shifts from two owners add up and receive the current base crit chance and the kind, and removing an owner removes its shift;
+  - a stats file with an `input` value other than `relative` or `absolute`, or with `input` on an actor-value effect, is skipped as invalid (C2, C3).
 - **Depends on:** C1, C3, C4. Placeholders depend on OQ-2, OQ-4, OQ-6.
 
 #### C6 Training, checks and XP modifiers
@@ -220,7 +226,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - the split applies to the level reached;
   - an unmapped skill gives no XP;
   - a skill at level 150 trains with the same rule;
-  - modifiers from two owners combine;
+  - modifiers from two owners combine, and a modifier below −100 % is rejected (ST-17);
   - checks sum the stat terms and the skill terms;
   - the precedence follows assumption 3.
 - **Depends on:** C1, C3, C4. Placeholders depend on OQ-3, OQ-5, OQ-7.
@@ -228,7 +234,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 #### C7 Stats service, level-up logic and events
 
 - **Goal:** one facade over registry, actor states, tables, modifiers and events. The game layer and the API call only this facade.
-- **Covers:** ST-2 (free-point opt-out), ST-3 (adjustments), ST-6 (auto-advance, advance claim, N, `setR` validation), ST-18, ST-20, ST-21 (opt-out), ST-22 (claim flag), ST-26 (operations and events).
+- **Covers:** ST-2 (free-point opt-out), ST-3 (adjustments), ST-13 (crit shift registration), ST-6 (auto-advance, advance claim, N, `setR` validation), ST-18, ST-20, ST-21 (opt-out), ST-22 (claim flag), ST-26 (operations and events).
 - **Interfaces:**
   - `StatsService` operations:
     - read values; `addXp`; `setValues`;
@@ -237,6 +243,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
     - `setR` (one value per save, player only, see ST-6 and [§5](PRD.md#5-scope)); `setN`;
     - `claimAdvancing(owner)`; `advance` and `advanceAll`; `ascend`;
     - `onPlayerLevelUp(newLevel)`: exactly one real level-up, the game's own level-up flow (G5). It grants the free points of one level and advances when `newLevel` is a multiple of N (ST-6). It takes no previous level and computes no level difference, so a level change that bypassed the level-up (`setlevel` and the like) is never counted, neither as points nor as advancing (ST-18). G5 is its only caller;
+    - `setCritShift(owner, CritShift)` and `removeCritShift(owner)` (ST-13, ST-26), over C5's `CritShiftRegistry`;
     - `claimPointAssignment(owner)`; `assignFreePoint(stat)`, which rejects a stat opted out of free points (ST-2, ST-20), also for the module that claimed point assignment.
   - `EventSink` interface with the five ST-26 events.
   - A stat change returns the `AvDelta`s from C5.
@@ -453,7 +460,7 @@ Three tasks, all after S6b and C6, each **parallel**:
 #### A1 C++ API
 
 - **Goal:** a versioned public C++ API for other SKSE plugins.
-- **Covers:** ST-2, ST-3 (base adjustments), ST-6 (claim advancing, set N), ST-8, ST-16, ST-17, ST-22, ST-26.
+- **Covers:** ST-2, ST-3 (base adjustments), ST-6 (claim advancing, set N), ST-8, ST-13 (crit shifts), ST-16, ST-17, ST-22, ST-26.
 - **Scope:** `modules/stats/include/tom/stats/api.h` (header only, no CommonLib types beyond forward-declared actors) and the plugin-side implementation.
 - **Interfaces:**
   - An interface struct with a version number, handed out through the SKSE messaging interface on request.
@@ -469,7 +476,7 @@ Three tasks, all after S6b and C6, each **parallel**:
 - **Covers:** ST-26, assumption 5.
 - **Scope:** `modules/stats/papyrus/` (the script source, with the `.pex` as a build output from the S8 custom command) and the native bindings in the plugin.
 - **Interfaces:**
-  - Global native functions that mirror A1, with stats addressed by name.
+  - Global native functions that mirror A1, with stats addressed by name, except the crit shift registration, which is C++ only (ST-26).
   - Ascend takes a curve name and parameters and passes them on to the C++ ascend.
   - Events are delivered as SKSE mod events with documented names and arguments.
 - **Verification:** `in-game`. `cgf` calls read and change values, a test script receives each event, and `Papyrus.0.log` shows no stack dumps.
