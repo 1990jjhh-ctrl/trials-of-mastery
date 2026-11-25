@@ -63,4 +63,24 @@ struct RedirectSplit
 // redirected.
 [[nodiscard]] RedirectSplit splitDamage(double damage, double share, double poolAvailable);
 
+// The value of a named effect for an actor: curve(x) of every entry of the
+// effect, summed over all stats in the table that list it (ST-9). x is the
+// effective stat for an absolute input and effective - start for a relative
+// one. Follows IEEE arithmetic like evaluate(). As for updateContributions,
+// the caller passes the active stats only.
+[[nodiscard]] double namedEffectValue(const ActorStats& actor, const StatsTable& stats, NamedEffect effect);
+
+// The share of damage taken that goes into a pool (ST-11), for splitDamage.
+[[nodiscard]] double damageRedirectionShare(const ActorStats& actor, const StatsTable& stats);
+
+// The limits of the stat bonus to skill XP (ST-12): -100 % and +200 %.
+inline constexpr double kLearningBonusFloor = -1.0;
+inline constexpr double kLearningBonusCap = 2.0;
+
+// The stat bonus to skill XP as a fraction (1 is +100 %): the LearningSpeed
+// effect, clamped to [kLearningBonusFloor, kLearningBonusCap] (ST-12). A sum
+// that is not a number gives 0. Bonuses from outside the module are not
+// part of it.
+[[nodiscard]] double learningBonus(const ActorStats& actor, const StatsTable& stats);
+
 }

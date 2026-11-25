@@ -8,6 +8,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <vector>
@@ -20,10 +21,14 @@ using tom::stats::AsymptoticCurve;
 using tom::stats::avContribution;
 using tom::stats::AvDelta;
 using tom::stats::ContributionLedger;
+using tom::stats::CurveInput;
+using tom::stats::damageRedirectionShare;
 using tom::stats::Effect;
 using tom::stats::initStat;
+using tom::stats::learningBonus;
 using tom::stats::LinearCurve;
 using tom::stats::NamedEffect;
+using tom::stats::namedEffectValue;
 using tom::stats::PowerCurve;
 using tom::stats::RedirectSplit;
 using tom::stats::setBaseAdjustment;
@@ -218,4 +223,107 @@ TEST_CASE("a share outside 0 to 1 is clamped, and damage that is not positive st
 	CHECK(splitDamage(40.0, std::numeric_limits<double>::quiet_NaN(), 100.0) == RedirectSplit{ .fromPool = 0.0, .toHealth = 40.0 });
 	CHECK(splitDamage(0.0, 0.25, 100.0) == RedirectSplit{ .fromPool = 0.0, .toHealth = 0.0 });
 	CHECK(splitDamage(-10.0, 0.25, 100.0) == RedirectSplit{ .fromPool = 0.0, .toHealth = -10.0 });
+}
+
+namespace
+{
+const StatId kInt{ "INT" };
+const StatId kPer{ "PER" };
+
+Effect namedEffect(NamedEffect effect, double a, CurveInput input = CurveInput::Relative)
+{
+	return Effect{ .target = effect, .curve = LinearCurve{ .a = a, .b = 0.0 }, .input = input };
+}
+
+// INT and PER at a start value of 10, each with points above it.
+ActorStats learner(std::int32_t intAbove, std::int32_t perAbove)
+{
+	ActorStats actor;
+	initStat(actor, kInt, 10);
+	initStat(actor, kPer, 10);
+	actor.values[kInt].accumulated = intAbove;
+	actor.values[kPer].accumulated = perAbove;
+	return actor;
+}
+}
+
+TEST_CASE("a named effect takes effective - start, or the effective stat when absolute", "[effects][named]")
+{
+	const ActorStats actor = learner(4, 0);
+	StatsTable       table;
+
+	table[kInt].effects["MagicDamage"] = namedEffect(NamedEffect::MagicDamage, 0.01);
+	CHECK_THAT(namedEffectValue(actor, table, NamedEffect::MagicDamage), WithinRel(0.04));
+
+	table[kInt].effects["MagicDamage"] = namedEffect(NamedEffect::MagicDamage, 0.01, CurveInput::Absolute);
+	CHECK_THAT(namedEffectValue(actor, table, NamedEffect::MagicDamage), WithinRel(0.14));
+}
+
+TEST_CASE("a named effect adds up over every stat that lists it, registered ones included", "[effects][named]")
+{
+	const StatId luck{ "Luck:LUC" };
+	ActorStats   actor = learner(10, 20);
+	initStat(actor, luck, 0);
+	actor.values[luck].accumulated = 5;
+	StatsTable table;
+	table[kInt].effects["LearningSpeed"] = namedEffect(NamedEffect::LearningSpeed, 0.01);
+	table[kPer].effects["LearningSpeed"] = namedEffect(NamedEffect::LearningSpeed, 0.01);
+	table[luck].effects["Learning"] = namedEffect(NamedEffect::LearningSpeed, 0.02);
+	// Another named effect and an actor-value effect don't count.
+	table[kInt].effects["MagicDamage"] = namedEffect(NamedEffect::MagicDamage, 1.0);
+	table[kInt].effects["Magicka"] = actorValueEffect("Magicka", 5.0);
+
+	// 0.1 + 0.2 + 0.1
+	CHECK_THAT(learningBonus(actor, table), WithinRel(0.4));
+}
+
+TEST_CASE("the damage redirection share adds up the stats that list it", "[effects][named]")
+{
+	StatsTable table = poolTable();
+	ActorStats actor = newActor();
+	CHECK(damageRedirectionShare(actor, table) == 0.0);
+
+	actor.values[kEnd].accumulated = 50;
+	const double fromEnd = 0.25 * (1.0 - std::exp(-0.5));
+	CHECK_THAT(damageRedirectionShare(actor, table), WithinRel(fromEnd));
+
+	table[kCon].effects["DamageRedirection"] = namedEffect(NamedEffect::DamageRedirection, 0.01, CurveInput::Absolute);
+	CHECK_THAT(damageRedirectionShare(actor, table), WithinRel(fromEnd + 0.1));
+}
+
+TEST_CASE("a learning curve above the cap still yields at most +200 %", "[effects][learning]")
+{
+	StatsTable table;
+	table[kInt].effects["LearningSpeed"] = namedEffect(NamedEffect::LearningSpeed, 1.0);
+	table[kPer].effects["LearningSpeed"] = namedEffect(NamedEffect::LearningSpeed, 1.0);
+
+	CHECK(learningBonus(learner(1, 0), table) == 1.0);
+	CHECK(learningBonus(learner(1, 1), table) == 2.0);
+	CHECK(learningBonus(learner(50, 50), table) == 2.0);
+}
+
+TEST_CASE("a learning malus stops at -100 %", "[effects][learning]")
+{
+	StatsTable table;
+	table[kInt].effects["LearningSpeed"] = namedEffect(NamedEffect::LearningSpeed, 0.1);
+	ActorStats actor = learner(0, 0);
+
+	actor.modifiers[kInt]["curse"] = -5;
+	CHECK_THAT(learningBonus(actor, table), WithinRel(-0.5));
+
+	actor.modifiers[kInt]["curse"] = -50;
+	CHECK(learningBonus(actor, table) == -1.0);
+}
+
+TEST_CASE("a learning bonus that is not a number gives none", "[effects][learning]")
+{
+	const Effect steep{ .target = NamedEffect::LearningSpeed, .curve = PowerCurve{ .alpha = 1.0, .lambda = 400.0 } };
+	StatsTable   table;
+	table[kInt].effects["LearningSpeed"] = steep;
+	table[kPer].effects["LearningSpeed"] = steep;
+	ActorStats actor = learner(100, 0);
+	actor.modifiers[kPer]["curse"] = -100;
+
+	// +inf from INT and -inf from PER
+	CHECK(learningBonus(actor, table) == 0.0);
 }
