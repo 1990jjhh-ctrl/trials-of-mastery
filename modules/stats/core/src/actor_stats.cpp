@@ -7,15 +7,11 @@ namespace tom::stats
 
 namespace
 {
-// Moves base and start value together, so the pools they span stay the same
-// (ST-3). The difference is 64-bit, since it can span the whole int32 range
-// twice.
+// The difference is 64-bit, since it can span the whole int32 range twice.
 void moveBase(ActorStats& actor, const StatId& id, std::int64_t difference)
 {
 	std::int32_t& base = actor.values[id].base;
 	base = saturateToInt32(base + difference);
-	std::int32_t& start = actor.startValues[id];
-	start = saturateToInt32(start + difference);
 }
 
 [[nodiscard]] std::int64_t sumOfAdjustments(const ActorStats& actor, const StatId& id)
@@ -54,9 +50,7 @@ double effective(const ActorStats& actor, const StatId& id)
 
 void initStat(ActorStats& actor, const StatId& id, std::int32_t defaultBase)
 {
-	const std::int32_t base = saturateToInt32(defaultBase + sumOfAdjustments(actor, id));
-	actor.values[id].base = base;
-	actor.startValues[id] = base;
+	actor.values[id].base = saturateToInt32(defaultBase + sumOfAdjustments(actor, id));
 	actor.defaultBases[id] = defaultBase;
 }
 

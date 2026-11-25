@@ -2,7 +2,9 @@
 // (data/schema/).
 #include "json_schema.h"
 
+#include "tom/stats/core/actor_stats.h"
 #include "tom/stats/core/config/tables.h"
+#include "tom/stats/core/effects.h"
 #include "tom/stats/core/table_folder.h"
 
 #include <catch2/catch_approx.hpp>
@@ -24,14 +26,20 @@
 
 using Catch::Approx;
 using nlohmann::json;
+using tom::stats::ActorStats;
 using tom::stats::ActorValueTarget;
+using tom::stats::baseCritChance;
 using tom::stats::buildTables;
+using tom::stats::CritKind;
+using tom::stats::CurveInput;
 using tom::stats::Diagnostic;
 using tom::stats::entryValidator;
 using tom::stats::evaluate;
 using tom::stats::folderName;
+using tom::stats::initStat;
 using tom::stats::MergedTables;
 using tom::stats::MergeResult;
+using tom::stats::NamedEffect;
 using tom::stats::PluginInfo;
 using tom::stats::PluginQuery;
 using tom::stats::StatId;
@@ -253,6 +261,25 @@ TEST_CASE("the shipped pools come from CON, END and INT (ST-10)", "[tables][data
 	CHECK(drives("CON", "Health"));
 	CHECK(drives("END", "Stamina"));
 	CHECK(drives("INT", "Magicka"));
+}
+
+TEST_CASE("the shipped crit effects follow the effective DEX (ST-13)", "[tables][data]")
+{
+	const auto  tables = builtShipped();
+	const auto& effects = tables.stats.at(StatId{ "DEX" }).effects;
+	const auto& physical = effects.at("CritChancePhysical");
+	const auto& magic = effects.at("CritChanceMagic");
+	REQUIRE(physical.target == std::variant<ActorValueTarget, NamedEffect>(NamedEffect::CritChancePhysical));
+	REQUIRE(magic.target == std::variant<ActorValueTarget, NamedEffect>(NamedEffect::CritChanceMagic));
+	CHECK(physical.input == CurveInput::Absolute);
+	CHECK(magic.input == CurveInput::Absolute);
+
+	// DEX 12 on the shipped default base of 10: no reference is subtracted.
+	ActorStats actor;
+	initStat(actor, StatId{ "DEX" }, 10);
+	actor.values[StatId{ "DEX" }].accumulated = 2;
+	CHECK(baseCritChance(actor, tables.stats, CritKind::Physical) == evaluate(physical.curve, 12.0));
+	CHECK(baseCritChance(actor, tables.stats, CritKind::Magic) == evaluate(magic.curve, 12.0));
 }
 
 TEST_CASE("the shipped actions give the ST-15 example XP", "[tables][data]")

@@ -22,24 +22,6 @@ namespace
 {
 const StatId kStr{ "STR" };
 const StatId kDex{ "DEX" };
-
-// The base and start value of STR, and the pools above the start value.
-struct Snapshot
-{
-	std::int32_t base = 0;
-	std::int32_t start = 0;
-	double       aboveStart = 0.0;
-};
-
-Snapshot snapshotStr(const ActorStats& actor)
-{
-	const std::int32_t start = actor.startValues.at(kStr);
-	return Snapshot{
-		.base = actor.values.at(kStr).base,
-		.start = start,
-		.aboveStart = effective(actor, kStr) - start,
-	};
-}
 }
 
 TEST_CASE("a new actor has multiplier 1 and no values", "[effective]")
@@ -121,7 +103,6 @@ TEST_CASE("a new stat starts at its default base", "[base]")
 	initStat(actor, kStr, 10);
 
 	CHECK(actor.values.at(kStr).base == 10);
-	CHECK(actor.startValues.at(kStr) == 10);
 	CHECK(actor.defaultBases.at(kStr) == 10);
 }
 
@@ -136,7 +117,7 @@ TEST_CASE("a race +1 and a class -2 on a default base of 10 give a base of 9", "
 		initStat(actor, kStr, 10);
 
 		CHECK(actor.values.at(kStr).base == 9);
-		CHECK(actor.startValues.at(kStr) == 9);
+		CHECK(actor.defaultBases.at(kStr) == 10);
 	}
 	SECTION("adjustments set after the stat is initialised")
 	{
@@ -147,42 +128,36 @@ TEST_CASE("a race +1 and a class -2 on a default base of 10 give a base of 9", "
 		setBaseAdjustment(actor, kStr, "class", -2);
 
 		CHECK(actor.values.at(kStr).base == 9);
-		CHECK(actor.startValues.at(kStr) == 9);
+		CHECK(actor.defaultBases.at(kStr) == 10);
 	}
 }
 
-TEST_CASE("adding, changing and removing an adjustment moves base and start value together", "[base]")
+TEST_CASE("adding, changing and removing an adjustment moves the base and leaves the default base alone", "[base]")
 {
 	ActorStats actor;
 	initStat(actor, kStr, 10);
 	setBaseAdjustment(actor, kStr, "race", 1);
 	actor.values[kStr].accumulated = 4;
 	actor.values[kStr].active = 3;
-	const Snapshot before = snapshotStr(actor);
-	REQUIRE(before.base == 11);
-	REQUIRE(before.aboveStart == 7.0);
+	REQUIRE(actor.values.at(kStr).base == 11);
 
 	setBaseAdjustment(actor, kStr, "class", -2);
 
-	Snapshot now = snapshotStr(actor);
-	CHECK(now.base == 9);
-	CHECK(now.start == 9);
-	CHECK(now.aboveStart == before.aboveStart);
+	CHECK(actor.values.at(kStr).base == 9);
+	CHECK(actor.defaultBases.at(kStr) == 10);
 
 	setBaseAdjustment(actor, kStr, "class", 3);
 
-	now = snapshotStr(actor);
-	CHECK(now.base == 14);
-	CHECK(now.start == 14);
-	CHECK(now.aboveStart == before.aboveStart);
+	CHECK(actor.values.at(kStr).base == 14);
+	CHECK(actor.defaultBases.at(kStr) == 10);
 
 	removeBaseAdjustment(actor, kStr, "class");
 
-	now = snapshotStr(actor);
-	CHECK(now.base == 11);
-	CHECK(now.start == 11);
-	CHECK(now.aboveStart == before.aboveStart);
+	CHECK(actor.values.at(kStr).base == 11);
+	CHECK(actor.defaultBases.at(kStr) == 10);
 	CHECK(actor.baseAdjustments.at(kStr).size() == 1);
+	CHECK(actor.values.at(kStr).accumulated == 4);
+	CHECK(actor.values.at(kStr).active == 3);
 }
 
 TEST_CASE("removing an adjustment keeps the ascended points in the base", "[base]")
@@ -198,9 +173,9 @@ TEST_CASE("removing an adjustment keeps the ascended points in the base", "[base
 
 	removeBaseAdjustment(actor, kStr, "class");
 
-	// 3 ascended points stay; the start value is the default base plus race.
+	// 3 ascended points stay.
 	CHECK(actor.values.at(kStr).base == 14);
-	CHECK(actor.startValues.at(kStr) == 11);
+	CHECK(actor.defaultBases.at(kStr) == 10);
 }
 
 TEST_CASE("removing an adjustment that is not set changes nothing", "[base]")
@@ -213,7 +188,6 @@ TEST_CASE("removing an adjustment that is not set changes nothing", "[base]")
 	removeBaseAdjustment(actor, kDex, "race");
 
 	CHECK(actor.values.at(kStr).base == 11);
-	CHECK(actor.startValues.at(kStr) == 11);
 	CHECK_FALSE(actor.values.contains(kDex));
 	CHECK_FALSE(actor.baseAdjustments.contains(kDex));
 }
@@ -227,30 +201,24 @@ TEST_CASE("an adjustment on one stat does not change another", "[base]")
 	setBaseAdjustment(actor, kStr, "race", 2);
 
 	CHECK(actor.values.at(kDex).base == 10);
-	CHECK(actor.startValues.at(kDex) == 10);
 }
 
-TEST_CASE("a changed default base moves base and start value by the difference", "[base]")
+TEST_CASE("a changed default base moves the base by the difference", "[base]")
 {
 	ActorStats actor;
 	initStat(actor, kStr, 10);
 	setBaseAdjustment(actor, kStr, "race", 1);
 	actor.values[kStr].accumulated = 5;
-	const Snapshot before = snapshotStr(actor);
 
 	applyDefaultBase(actor, kStr, 12);
 
-	Snapshot now = snapshotStr(actor);
-	CHECK(now.base == before.base + 2);
-	CHECK(now.start == before.start + 2);
-	CHECK(now.aboveStart == before.aboveStart);
+	CHECK(actor.values.at(kStr).base == 13);
+	CHECK(actor.values.at(kStr).accumulated == 5);
 	CHECK(actor.defaultBases.at(kStr) == 12);
 
 	applyDefaultBase(actor, kStr, 12);
 
-	now = snapshotStr(actor);
-	CHECK(now.base == before.base + 2);
-	CHECK(now.start == before.start + 2);
+	CHECK(actor.values.at(kStr).base == 13);
 	CHECK(actor.defaultBases.at(kStr) == 12);
 }
 
@@ -262,7 +230,6 @@ TEST_CASE("a default base applied without a previous one moves by the whole valu
 	applyDefaultBase(actor, kStr, 10);
 
 	CHECK(actor.values.at(kStr).base == 11);
-	CHECK(actor.startValues.at(kStr) == 11);
 	CHECK(actor.defaultBases.at(kStr) == 10);
 }
 
@@ -277,11 +244,9 @@ TEST_CASE("base adjustments saturate at the integer range", "[base]")
 	setBaseAdjustment(actor, kStr, "b", kMax);
 
 	CHECK(actor.values.at(kStr).base == kMax);
-	CHECK(actor.startValues.at(kStr) == kMax);
 
 	setBaseAdjustment(actor, kStr, "a", kMin);
 	setBaseAdjustment(actor, kStr, "b", kMin);
 
 	CHECK(actor.values.at(kStr).base == kMin);
-	CHECK(actor.startValues.at(kStr) == kMin);
 }

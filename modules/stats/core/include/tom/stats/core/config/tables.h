@@ -49,7 +49,7 @@ struct ActorValueTarget
 // take the relative input (ST-10).
 enum class CurveInput
 {
-	Relative,  // effective stat - start value
+	Relative,  // effective stat - default base
 	Absolute,  // effective stat
 };
 
