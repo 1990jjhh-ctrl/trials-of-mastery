@@ -14,7 +14,9 @@
 
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <map>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -148,6 +150,30 @@ public:
 	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> removeBaseAdjustment(ActorId actor, const StatId& stat,
 		const BaseAdjustmentKey& key);
 
+	// Sets r (ST-6). Fails, and keeps the previous value, for a value that is
+	// not finite or not greater than 1; the error is for the log.
+	[[nodiscard]] std::expected<void, Error> setR(double r);
+
+	// Sets N, the level interval of auto-advancing (ST-6). Fails, and keeps
+	// the previous value, for a value below 1.
+	[[nodiscard]] std::expected<void, Error> setN(std::int32_t n);
+
+	// Claims advancing for owner (ST-6): from then on the service no longer
+	// advances on its own at level-ups. Returns false for an empty owner.
+	bool               claimAdvancing(const std::string& owner);
+	[[nodiscard]] bool advancingClaimed() const { return !advancingOwners_.empty(); }
+
+	// Advances one stat or every active stat of the actor (ST-6); dormant
+	// stats keep their points. Advancing leaves the effective stat as it is,
+	// so there are no AvDeltas.
+	[[nodiscard]] std::expected<void, Error> advance(ActorId actor, const StatId& stat);
+	[[nodiscard]] std::expected<void, Error> advanceAll(ActorId actor);
+
+	// Ascends a stat with the caller's conversion formula (ST-6). Fails, and
+	// changes nothing, when the formula's result is not finite.
+	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> ascend(ActorId actor, const StatId& stat,
+		const std::function<double(std::int32_t)>& convert);
+
 private:
 	struct ActorState
 	{
@@ -192,6 +218,7 @@ private:
 	double                        r_;
 	std::int32_t                  n_;
 	std::int32_t                  freePointsPerLevelUp_;
+	std::set<std::string>         advancingOwners_;
 };
 
 }

@@ -40,6 +40,7 @@ if(TOM_BUILD_TESTS)
         tests/unit/json_schema.cpp
         tests/unit/settings_test.cpp
         tests/unit/stat_registry_test.cpp
+        tests/unit/stats_service_progression_test.cpp
         tests/unit/stats_service_test.cpp
         tests/unit/stat_value_test.cpp
         tests/unit/table_folder_test.cpp

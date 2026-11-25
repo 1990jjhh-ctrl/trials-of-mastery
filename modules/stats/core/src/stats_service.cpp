@@ -249,6 +249,57 @@ std::expected<std::vector<AvDelta>, Error> StatsService::removeBaseAdjustment(Ac
 	});
 }
 
+std::expected<void, Error> StatsService::setR(double r)
+{
+	if (!isValidR(r)) {
+		return rejected(std::format("r {} is not a finite number greater than 1; keeping {}", r, r_));
+	}
+	r_ = r;
+	return {};
+}
+
+std::expected<void, Error> StatsService::setN(std::int32_t n)
+{
+	if (!isValidN(n)) {
+		return rejected(std::format("N {} is below 1; keeping {}", n, n_));
+	}
+	n_ = n;
+	return {};
+}
+
+bool StatsService::claimAdvancing(const std::string& owner)
+{
+	if (owner.empty()) {
+		return false;
+	}
+	advancingOwners_.insert(owner);
+	return true;
+}
+
+std::expected<void, Error> StatsService::advance(ActorId actor, const StatId& stat)
+{
+	return findStat(actor, stat).transform([&](ActorState* state) { tom::stats::advance(state->stats.values[stat]); });
+}
+
+std::expected<void, Error> StatsService::advanceAll(ActorId actor)
+{
+	return findActor(actor).transform([this](ActorState* state) {
+		for (const auto& id : registry_.activeStats()) {
+			tom::stats::advance(state->stats.values[id]);
+		}
+	});
+}
+
+std::expected<std::vector<AvDelta>, Error> StatsService::ascend(ActorId actor, const StatId& stat, const std::function<double(std::int32_t)>& convert)
+{
+	return findStat(actor, stat).and_then([&](ActorState* state) -> std::expected<std::vector<AvDelta>, Error> {
+		if (!tom::stats::ascend(state->stats.values[stat], convert)) {
+			return rejected(std::format("the ascend formula for stat '{}' gave a result that is not finite", stat.name));
+		}
+		return updateEffects(*state);
+	});
+}
+
 std::int32_t StatsService::defaultBase(const StatId& stat) const
 {
 	const auto it = tables_.stats.find(stat);
