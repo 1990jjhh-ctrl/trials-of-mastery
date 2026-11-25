@@ -48,6 +48,77 @@ struct StatReading
 // The AvDeltas of each actor whose actor-value contributions changed.
 using AvDeltasByActor = std::map<ActorId, std::vector<AvDelta>>;
 
+// The events of ST-26.
+
+// Where a stat point came from.
+enum class PointSource
+{
+	Xp,         // bought with XP (ST-5)
+	FreePoint,  // a free level-up point assigned to the stat (ST-20)
+};
+
+struct XpGainedEvent
+{
+	ActorId actor = 0;
+	StatId  stat;
+	double  xp = 0.0;  // the amount added
+
+	bool operator==(const XpGainedEvent&) const = default;
+};
+
+struct PointGainedEvent
+{
+	ActorId      actor = 0;
+	StatId       stat;
+	std::int32_t points = 0;
+	PointSource  source = PointSource::Xp;
+
+	bool operator==(const PointGainedEvent&) const = default;
+};
+
+// The free points of one player level-up (ST-20).
+struct LevelUpPointsGrantedEvent
+{
+	std::int32_t level = 0;    // the level reached
+	std::int32_t points = 0;   // granted by this level-up
+	std::int32_t pending = 0;  // pending in all, these included
+
+	bool operator==(const LevelUpPointsGrantedEvent&) const = default;
+};
+
+struct StatAdvancedEvent
+{
+	ActorId      actor = 0;
+	StatId       stat;
+	std::int32_t points = 0;  // the active points moved into accumulated
+
+	bool operator==(const StatAdvancedEvent&) const = default;
+};
+
+struct StatAscendedEvent
+{
+	ActorId      actor = 0;
+	StatId       stat;
+	std::int32_t points = 0;      // the accumulated and active points converted
+	std::int32_t baseGained = 0;  // what the conversion added to the base
+
+	bool operator==(const StatAscendedEvent&) const = default;
+};
+
+// Receives the events of ST-26. Each is sent after its change is complete,
+// so a receiver may call the service.
+class EventSink
+{
+public:
+	virtual ~EventSink() = default;
+
+	virtual void xpGained(const XpGainedEvent& event) = 0;
+	virtual void pointGained(const PointGainedEvent& event) = 0;
+	virtual void levelUpPointsGranted(const LevelUpPointsGrantedEvent& event) = 0;
+	virtual void statAdvanced(const StatAdvancedEvent& event) = 0;
+	virtual void statAscended(const StatAscendedEvent& event) = 0;
+};
+
 class StatsService
 {
 public:
@@ -60,6 +131,10 @@ public:
 
 	[[nodiscard]] const StatRegistry& registry() const { return registry_; }
 	[[nodiscard]] ActorId             player() const { return player_; }
+
+	// Sets the receiver of the events, or none for nullptr. The service does
+	// not own it.
+	void setEventSink(EventSink* sink) { events_ = sink; }
 
 	// r and N of ST-6 and the free points per level-up of ST-20.
 	[[nodiscard]] double       r() const { return r_; }
@@ -242,6 +317,13 @@ private:
 	[[nodiscard]] std::expected<ActorState*, Error>       findActor(ActorId actor);
 	[[nodiscard]] std::expected<void, Error>              checkActive(const StatId& stat) const;
 
+	// Advances the stat and returns the event to send.
+	[[nodiscard]] static StatAdvancedEvent advanceStat(ActorId actor, ActorState& state, const StatId& stat);
+
+	// Sends the event, if there is a receiver.
+	template <typename Event>
+	void notify(void (EventSink::*handler)(const Event&), const Event& event) const;
+
 	// Fails for an empty key and for the module's race key.
 	[[nodiscard]] static std::expected<void, Error> checkAdjustmentKey(const BaseAdjustmentKey& key);
 
@@ -259,6 +341,7 @@ private:
 	std::set<std::string>         advancingOwners_;
 	std::set<std::string>         pointAssignmentOwners_;
 	std::int32_t                  pendingPoints_ = 0;
+	EventSink*                    events_ = nullptr;
 	// Replaced, never changed, so a running critChance() keeps its own.
 	std::shared_ptr<const CritShiftRegistry> critShifts_ = std::make_shared<const CritShiftRegistry>();
 };

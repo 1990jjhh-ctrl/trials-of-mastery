@@ -41,6 +41,7 @@ if(TOM_BUILD_TESTS)
         tests/unit/settings_test.cpp
         tests/unit/stat_registry_test.cpp
         tests/unit/stats_service_crit_test.cpp
+        tests/unit/stats_service_events_test.cpp
         tests/unit/stats_service_level_up_test.cpp
         tests/unit/stats_service_progression_test.cpp
         tests/unit/stats_service_test.cpp

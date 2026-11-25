@@ -65,6 +65,22 @@ StatsService::StatsService(const Settings& settings, Tables tables, ActorId play
 	rebuildActiveTable();
 }
 
+StatAdvancedEvent StatsService::advanceStat(ActorId actor, ActorState& state, const StatId& stat)
+{
+	StatValue&         value = state.stats.values[stat];
+	const std::int32_t points = value.active;
+	tom::stats::advance(value);
+	return StatAdvancedEvent{ .actor = actor, .stat = stat, .points = points };
+}
+
+template <typename Event>
+void StatsService::notify(void (EventSink::*handler)(const Event&), const Event& event) const
+{
+	if (events_ != nullptr) {
+		(events_->*handler)(event);
+	}
+}
+
 std::expected<AvDeltasByActor, Error> StatsService::registerStat(const StatId& id, FreePoints freePoints)
 {
 	if (!tables_.stats.contains(id)) {
@@ -178,8 +194,13 @@ std::expected<std::vector<AvDelta>, Error> StatsService::addXp(ActorId actor, co
 		return rejected(std::format("XP {} for stat '{}' is not positive and finite", xp, stat.name));
 	}
 	return findStat(actor, stat).transform([&](ActorState* state) {
-		(void)tom::stats::addXp(state->stats.values[stat], xp, r_);
-		return updateEffects(*state);
+		const GainResult gain = tom::stats::addXp(state->stats.values[stat], xp, r_);
+		auto             deltas = updateEffects(*state);
+		notify(&EventSink::xpGained, XpGainedEvent{ .actor = actor, .stat = stat, .xp = xp });
+		if (gain.points > 0) {
+			notify(&EventSink::pointGained, PointGainedEvent{ .actor = actor, .stat = stat, .points = gain.points, .source = PointSource::Xp });
+		}
+		return deltas;
 	});
 }
 
@@ -278,31 +299,46 @@ bool StatsService::claimAdvancing(const std::string& owner)
 
 std::expected<void, Error> StatsService::advance(ActorId actor, const StatId& stat)
 {
-	return findStat(actor, stat).transform([&](ActorState* state) { tom::stats::advance(state->stats.values[stat]); });
+	return findStat(actor, stat).transform([&](ActorState* state) {
+		notify(&EventSink::statAdvanced, advanceStat(actor, *state, stat));
+	});
 }
 
 std::expected<void, Error> StatsService::advanceAll(ActorId actor)
 {
-	return findActor(actor).transform([this](ActorState* state) {
-		for (const auto& id : registry_.activeStats()) {
-			tom::stats::advance(state->stats.values[id]);
-		}
-	});
+	const auto state = findActor(actor);
+	if (!state) {
+		return std::unexpected(state.error());
+	}
+	std::vector<StatAdvancedEvent> advanced;
+	for (const auto& id : registry_.activeStats()) {
+		advanced.push_back(advanceStat(actor, **state, id));
+	}
+	for (const auto& event : advanced) {
+		notify(&EventSink::statAdvanced, event);
+	}
+	return {};
 }
 
 std::expected<std::vector<AvDelta>, Error> StatsService::ascend(ActorId actor, const StatId& stat, const std::function<double(std::int32_t)>& convert)
 {
 	return findStat(actor, stat).and_then([&](ActorState* state) -> std::expected<std::vector<AvDelta>, Error> {
-		if (!tom::stats::ascend(state->stats.values[stat], convert)) {
+		StatValue&         value = state->stats.values[stat];
+		const std::int32_t points = saturatingAdd(value.accumulated, value.active);
+		const std::int32_t baseBefore = value.base;
+		if (!tom::stats::ascend(value, convert)) {
 			return rejected(std::format("the ascend formula for stat '{}' gave a result that is not finite", stat.name));
 		}
-		return updateEffects(*state);
+		auto deltas = updateEffects(*state);
+		notify(&EventSink::statAscended, StatAscendedEvent{ .actor = actor, .stat = stat, .points = points, .baseGained = saturateToInt32(std::int64_t{ value.base } - baseBefore) });
+		return deltas;
 	});
 }
 
 void StatsService::onPlayerLevelUp(std::int32_t newLevel)
 {
 	pendingPoints_ = saturatingAdd(pendingPoints_, freePointsPerLevelUp_);
+	notify(&EventSink::levelUpPointsGranted, LevelUpPointsGrantedEvent{ .level = newLevel, .points = freePointsPerLevelUp_, .pending = pendingPoints_ });
 	if (advancingClaimed() || newLevel < 1 || newLevel % n_ != 0) {
 		return;
 	}
@@ -334,7 +370,9 @@ std::expected<std::vector<AvDelta>, Error> StatsService::assignFreePoint(const S
 		StatValue& value = state->stats.values[stat];
 		value.accumulated = saturatingAdd(value.accumulated, 1);
 		--pendingPoints_;
-		return updateEffects(*state);
+		auto deltas = updateEffects(*state);
+		notify(&EventSink::pointGained, PointGainedEvent{ .actor = player_, .stat = stat, .points = 1, .source = PointSource::FreePoint });
+		return deltas;
 	});
 }
 
