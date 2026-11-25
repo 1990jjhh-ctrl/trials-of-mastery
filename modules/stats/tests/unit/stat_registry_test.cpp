@@ -4,6 +4,7 @@
 
 #include <vector>
 
+using tom::stats::FreePoints;
 using tom::stats::StatId;
 using tom::stats::StatRegistry;
 
@@ -89,4 +90,53 @@ TEST_CASE("an unknown stat is not contained", "[registry]")
 	CHECK_FALSE(registry.contains(StatId{ "LUC" }));
 	CHECK_FALSE(registry.isCore(StatId{ "LUC" }));
 	CHECK_FALSE(registry.isDormant(StatId{ "LUC" }));
+}
+
+TEST_CASE("core stats and registered stats get free points by default", "[registry]")
+{
+	StatRegistry registry;
+	REQUIRE(registry.registerStat(StatId{ "FTH" }));
+
+	for (const auto& id : registry.activeStats()) {
+		CHECK(registry.getsFreePoints(id));
+	}
+}
+
+TEST_CASE("a registered stat can opt out of free points", "[registry]")
+{
+	StatRegistry registry;
+
+	REQUIRE(registry.registerStat(StatId{ "LUC" }, FreePoints::OptedOut));
+
+	CHECK_FALSE(registry.getsFreePoints(StatId{ "LUC" }));
+	CHECK(registry.getsFreePoints(StatId{ "STR" }));
+}
+
+TEST_CASE("a rejected registration keeps the free-point setting", "[registry]")
+{
+	StatRegistry registry;
+	REQUIRE(registry.registerStat(StatId{ "LUC" }, FreePoints::OptedOut));
+
+	CHECK_FALSE(registry.registerStat(StatId{ "LUC" }, FreePoints::Granted));
+	CHECK_FALSE(registry.registerStat(StatId{ "STR" }, FreePoints::OptedOut));
+
+	CHECK_FALSE(registry.getsFreePoints(StatId{ "LUC" }));
+	CHECK(registry.getsFreePoints(StatId{ "STR" }));
+}
+
+TEST_CASE("a dormant stat takes the free-point setting of the registration that brings it back", "[registry]")
+{
+	StatRegistry registry;
+	registry.addDormant(StatId{ "LUC" });
+
+	REQUIRE(registry.registerStat(StatId{ "LUC" }, FreePoints::OptedOut));
+
+	CHECK_FALSE(registry.getsFreePoints(StatId{ "LUC" }));
+}
+
+TEST_CASE("an unknown stat gets no free points", "[registry]")
+{
+	const StatRegistry registry;
+
+	CHECK_FALSE(registry.getsFreePoints(StatId{ "LUC" }));
 }

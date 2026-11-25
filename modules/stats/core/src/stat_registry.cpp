@@ -24,24 +24,25 @@ StatRegistry::StatRegistry()
 {
 	entries_.reserve(kCoreStatNames.size());
 	for (const auto name : kCoreStatNames) {
-		entries_.push_back(Entry{ .id = StatId{ std::string(name) }, .core = true, .dormant = false });
+		entries_.push_back(Entry{ .id = StatId{ std::string(name) }, .core = true, .dormant = false, .freePoints = FreePoints::Granted });
 	}
 }
 
-bool StatRegistry::registerStat(const StatId& id)
+bool StatRegistry::registerStat(const StatId& id, FreePoints freePoints)
 {
 	if (id.name.empty()) {
 		return false;
 	}
 	Entry* entry = findIn(entries_, id);
 	if (entry == nullptr) {
-		entries_.push_back(Entry{ .id = id, .core = false, .dormant = false });
+		entries_.push_back(Entry{ .id = id, .core = false, .dormant = false, .freePoints = freePoints });
 		return true;
 	}
 	if (!entry->dormant) {
 		return false;
 	}
 	entry->dormant = false;
+	entry->freePoints = freePoints;
 	return true;
 }
 
@@ -50,7 +51,7 @@ void StatRegistry::addDormant(const StatId& id)
 	if (contains(id)) {
 		return;
 	}
-	entries_.push_back(Entry{ .id = id, .core = false, .dormant = true });
+	entries_.push_back(Entry{ .id = id, .core = false, .dormant = true, .freePoints = FreePoints::Granted });
 }
 
 bool StatRegistry::contains(const StatId& id) const
@@ -68,6 +69,12 @@ bool StatRegistry::isDormant(const StatId& id) const
 {
 	const Entry* entry = findIn(entries_, id);
 	return entry != nullptr && entry->dormant;
+}
+
+bool StatRegistry::getsFreePoints(const StatId& id) const
+{
+	const Entry* entry = findIn(entries_, id);
+	return entry != nullptr && entry->freePoints == FreePoints::Granted;
 }
 
 std::vector<StatId> StatRegistry::activeStats() const
