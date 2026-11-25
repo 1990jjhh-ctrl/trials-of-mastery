@@ -18,38 +18,37 @@ using ModifierKey = std::string;
 using BaseAdjustmentKey = std::string;
 
 // The stats of one actor (ST-4). A stat without an entry in values counts as
-// all zero, and so does a missing start value or default base.
+// all zero, and so does a missing default base.
 //
 // The base in values already contains the stat's base adjustments (Stats plan,
 // assumption 11); baseAdjustments records them per key so they can be changed
-// and removed later. defaultBases is the default base last applied per stat.
+// and removed later. defaultBases is the default base last applied per stat,
+// the reference of the relative effects (Stats plan, assumption 12).
 struct ActorStats
 {
 	std::map<StatId, StatValue>                                 values;
-	std::map<StatId, std::int32_t>                              startValues;
 	std::map<StatId, std::map<ModifierKey, std::int32_t>>       modifiers;
 	std::map<StatId, std::map<BaseAdjustmentKey, std::int32_t>> baseAdjustments;
 	std::map<StatId, std::int32_t>                              defaultBases;
 	double                                                      multiplier = 1.0;
 };
 
-// Sets base and start value to the default base plus the stat's base
-// adjustments and stores the default base as last applied (ST-3). Meant for
-// a new actor or a new stat: points ascended into the base are replaced.
+// Sets the base to the default base plus the stat's base adjustments and
+// stores the default base as last applied (ST-3). Meant for a new actor or a
+// new stat: points ascended into the base are replaced.
 // Leaves the accumulated and active points and the XP alone.
 void initStat(ActorStats& actor, const StatId& id, std::int32_t defaultBase);
 
-// Sets the adjustment under key and moves base and start value by the
-// difference to the key's old value, or by the whole value for a new key
-// (ST-3).
+// Sets the adjustment under key and moves the base by the difference to the
+// key's old value, or by the whole value for a new key (ST-3).
 void setBaseAdjustment(ActorStats& actor, const StatId& id, const BaseAdjustmentKey& key, std::int32_t amount);
 
-// Removes the adjustment under key and takes its value off base and start
-// value (ST-3). Does nothing for a key that is not set.
+// Removes the adjustment under key and takes its value off the base (ST-3).
+// Does nothing for a key that is not set.
 void removeBaseAdjustment(ActorStats& actor, const StatId& id, const BaseAdjustmentKey& key);
 
-// Moves base and start value by the difference between defaultBase and the
-// default base last applied, then stores defaultBase as last applied (ST-3).
+// Moves the base by the difference between defaultBase and the default base
+// last applied, then stores defaultBase as last applied (ST-3).
 // With none applied yet, the difference is the whole of defaultBase.
 void applyDefaultBase(ActorStats& actor, const StatId& id, std::int32_t defaultBase);
 
