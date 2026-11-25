@@ -4,6 +4,7 @@ find_package(SimpleIni CONFIG REQUIRED)
 # Game-independent formula and configuration core.
 add_library(tom_stats_core STATIC
     core/src/actor_stats.cpp
+    core/src/check.cpp
     core/src/config/settings.cpp
     core/src/config/table_reader.cpp
     core/src/config/tables.cpp
@@ -29,6 +30,7 @@ if(TOM_BUILD_TESTS)
 
     add_executable(tom_stats_core_tests
         tests/unit/actor_stats_test.cpp
+        tests/unit/check_test.cpp
         tests/unit/curve_parse_test.cpp
         tests/unit/curve_test.cpp
         tests/unit/default_tables_test.cpp
