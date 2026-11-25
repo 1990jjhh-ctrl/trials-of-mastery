@@ -9,6 +9,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 using Catch::Matchers::WithinRel;
@@ -24,7 +25,9 @@ using tom::stats::initStat;
 using tom::stats::LinearCurve;
 using tom::stats::NamedEffect;
 using tom::stats::PowerCurve;
+using tom::stats::RedirectSplit;
 using tom::stats::setBaseAdjustment;
+using tom::stats::splitDamage;
 using tom::stats::StatEntry;
 using tom::stats::StatId;
 using tom::stats::StatsTable;
@@ -188,4 +191,31 @@ TEST_CASE("an infinite contribution is not applied", "[effects][contribution]")
 	actor.values[kCon].accumulated = 100;
 	CHECK(updateContributions(ledger, actor, table).empty());
 	CHECK(ledger.contributions.at("Health") == 1.0);
+}
+
+TEST_CASE("an empty pool sends all damage to Health", "[effects][redirection]")
+{
+	CHECK(splitDamage(40.0, 0.25, 0.0) == RedirectSplit{ .fromPool = 0.0, .toHealth = 40.0 });
+	CHECK(splitDamage(40.0, 0.25, -5.0) == RedirectSplit{ .fromPool = 0.0, .toHealth = 40.0 });
+}
+
+TEST_CASE("a short pool gives what it holds and Health takes the rest", "[effects][redirection]")
+{
+	// 10 of the 40 are redirected, the pool holds 4.
+	CHECK(splitDamage(40.0, 0.25, 4.0) == RedirectSplit{ .fromPool = 4.0, .toHealth = 36.0 });
+}
+
+TEST_CASE("a full pool takes the redirected share", "[effects][redirection]")
+{
+	CHECK(splitDamage(40.0, 0.25, 100.0) == RedirectSplit{ .fromPool = 10.0, .toHealth = 30.0 });
+	CHECK(splitDamage(40.0, 0.25, 10.0) == RedirectSplit{ .fromPool = 10.0, .toHealth = 30.0 });
+}
+
+TEST_CASE("a share outside 0 to 1 is clamped, and damage that is not positive stays whole", "[effects][redirection]")
+{
+	CHECK(splitDamage(40.0, 1.5, 100.0) == RedirectSplit{ .fromPool = 40.0, .toHealth = 0.0 });
+	CHECK(splitDamage(40.0, -0.5, 100.0) == RedirectSplit{ .fromPool = 0.0, .toHealth = 40.0 });
+	CHECK(splitDamage(40.0, std::numeric_limits<double>::quiet_NaN(), 100.0) == RedirectSplit{ .fromPool = 0.0, .toHealth = 40.0 });
+	CHECK(splitDamage(0.0, 0.25, 100.0) == RedirectSplit{ .fromPool = 0.0, .toHealth = 0.0 });
+	CHECK(splitDamage(-10.0, 0.25, 100.0) == RedirectSplit{ .fromPool = 0.0, .toHealth = -10.0 });
 }

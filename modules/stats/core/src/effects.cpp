@@ -1,5 +1,6 @@
 #include "tom/stats/core/effects.h"
 
+#include <algorithm>
 #include <cmath>
 #include <variant>
 
@@ -70,6 +71,17 @@ std::vector<AvDelta> updateContributions(ContributionLedger& ledger, const Actor
 		}
 	}
 	return deltas;
+}
+
+RedirectSplit splitDamage(double damage, double share, double poolAvailable)
+{
+	// The negated comparisons also catch NaN.
+	if (!(damage > 0.0) || !(share > 0.0) || !(poolAvailable > 0.0)) {
+		return RedirectSplit{ .fromPool = 0.0, .toHealth = damage };
+	}
+	const double redirected = damage * std::min(share, 1.0);
+	const double fromPool = std::min(redirected, poolAvailable);
+	return RedirectSplit{ .fromPool = fromPool, .toHealth = damage - fromPool };
 }
 
 }

@@ -48,4 +48,19 @@ struct AvDelta
 [[nodiscard]] std::vector<AvDelta> updateContributions(ContributionLedger& ledger, const ActorStats& actor,
 	const StatsTable& stats);
 
+// Where a hit's damage goes under END's damage redirection (ST-11).
+struct RedirectSplit
+{
+	double fromPool = 0.0;  // taken from Stamina or Magicka
+	double toHealth = 0.0;
+
+	bool operator==(const RedirectSplit&) const = default;
+};
+
+// Redirects damage * share into the pool; what the pool cannot hold goes to
+// Health with the rest. A share outside [0, 1] is clamped to it, a pool that
+// is not positive counts as empty, and damage that is not positive is not
+// redirected.
+[[nodiscard]] RedirectSplit splitDamage(double damage, double share, double poolAvailable);
+
 }
