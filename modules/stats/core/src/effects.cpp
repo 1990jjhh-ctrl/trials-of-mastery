@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 #include <variant>
 
 namespace tom::stats
@@ -123,6 +124,41 @@ double learningBonus(const ActorStats& actor, const StatsTable& stats)
 		return 0.0;
 	}
 	return std::clamp(bonus, kLearningBonusFloor, kLearningBonusCap);
+}
+
+double baseCritChance(const ActorStats& actor, const StatsTable& stats, CritKind kind)
+{
+	const NamedEffect effect = kind == CritKind::Physical ? NamedEffect::CritChancePhysical : NamedEffect::CritChanceMagic;
+	return namedEffectValue(actor, stats, effect);
+}
+
+bool CritShiftRegistry::set(const std::string& owner, CritShift shift)
+{
+	if (owner.empty() || !shift) {
+		return false;
+	}
+	shifts_.insert_or_assign(owner, std::move(shift));
+	return true;
+}
+
+void CritShiftRegistry::remove(const std::string& owner)
+{
+	shifts_.erase(owner);
+}
+
+double CritShiftRegistry::sum(const ActorStats& actor, CritKind kind, double baseChance) const
+{
+	double total = 0.0;
+	for (const auto& [owner, shift] : shifts_) {
+		total += shift(actor, kind, baseChance);
+	}
+	return total;
+}
+
+double critChance(const ActorStats& actor, const StatsTable& stats, const CritShiftRegistry& shifts, CritKind kind)
+{
+	const double base = baseCritChance(actor, stats, kind);
+	return base + shifts.sum(actor, kind, base);
 }
 
 }

@@ -6,6 +6,7 @@
 #include "tom/stats/core/config/tables.h"
 #include "tom/stats/core/curve.h"
 
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -82,5 +83,42 @@ inline constexpr double kLearningBonusCap = 2.0;
 // that is not a number gives 0. Bonuses from outside the module are not
 // part of it.
 [[nodiscard]] double learningBonus(const ActorStats& actor, const StatsTable& stats);
+
+// The two crit chances of ST-13.
+enum class CritKind
+{
+	Physical,  // NamedEffect::CritChancePhysical
+	Magic,     // NamedEffect::CritChanceMagic
+};
+
+// The crit effect of that kind, from every stat that lists it (ST-13).
+[[nodiscard]] double baseCritChance(const ActorStats& actor, const StatsTable& stats, CritKind kind);
+
+// A shift of the crit chance that another module registers (ST-13), e.g. the
+// luck module from LUC (LU-7). It gets the actor, the kind and the current
+// base crit chance and returns the amount to add.
+using CritShift = std::function<double(const ActorStats& actor, CritKind kind, double baseChance)>;
+
+// The crit shifts, one per owner key (ST-13, ST-26).
+class CritShiftRegistry
+{
+public:
+	// Sets or replaces the owner's shift. Returns false, and changes nothing,
+	// for an empty owner or an empty function.
+	[[nodiscard]] bool set(const std::string& owner, CritShift shift);
+
+	// Does nothing for an owner without a shift.
+	void remove(const std::string& owner);
+
+	// The sum of all shifts, each called with the same base chance.
+	[[nodiscard]] double sum(const ActorStats& actor, CritKind kind, double baseChance) const;
+
+private:
+	std::map<std::string, CritShift, std::less<>> shifts_;
+};
+
+// baseCritChance plus the sum of the registered shifts (ST-13).
+[[nodiscard]] double critChance(const ActorStats& actor, const StatsTable& stats, const CritShiftRegistry& shifts,
+	CritKind kind);
 
 }

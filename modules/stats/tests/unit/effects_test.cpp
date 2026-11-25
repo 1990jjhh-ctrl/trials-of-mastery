@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <utility>
 #include <vector>
 
 using Catch::Matchers::WithinRel;
@@ -20,7 +21,12 @@ using tom::stats::ascend;
 using tom::stats::AsymptoticCurve;
 using tom::stats::avContribution;
 using tom::stats::AvDelta;
+using tom::stats::baseCritChance;
 using tom::stats::ContributionLedger;
+using tom::stats::critChance;
+using tom::stats::CritKind;
+using tom::stats::CritShift;
+using tom::stats::CritShiftRegistry;
 using tom::stats::CurveInput;
 using tom::stats::damageRedirectionShare;
 using tom::stats::Effect;
@@ -326,4 +332,100 @@ TEST_CASE("a learning bonus that is not a number gives none", "[effects][learnin
 
 	// +inf from INT and -inf from PER
 	CHECK(learningBonus(actor, table) == 0.0);
+}
+
+namespace
+{
+const StatId kDex{ "DEX" };
+
+// DEX 10 above a start value of 10, with a crit effect per kind.
+struct CritFixture
+{
+	ActorStats actor;
+	StatsTable table;
+
+	CritFixture()
+	{
+		initStat(actor, kDex, 10);
+		actor.values[kDex].accumulated = 10;
+		table[kDex].effects["CritChancePhysical"] = namedEffect(NamedEffect::CritChancePhysical, 0.5);
+		table[kDex].effects["CritChanceMagic"] = namedEffect(NamedEffect::CritChanceMagic, 0.25);
+	}
+};
+
+CritShift constantShift(double amount)
+{
+	return [amount](const ActorStats&, CritKind, double) { return amount; };
+}
+
+using CritCalls = std::vector<std::pair<CritKind, double>>;
+
+// Records the kind and base chance it gets and shifts by 1.
+CritShift recordingShift(CritCalls& calls)
+{
+	return [&calls](const ActorStats&, CritKind kind, double baseChance) {
+		calls.emplace_back(kind, baseChance);
+		return 1.0;
+	};
+}
+
+double tenthOfBase(const ActorStats&, CritKind, double baseChance)
+{
+	return baseChance * 0.1;
+}
+}
+
+TEST_CASE("the base crit chance comes from the crit effect of its kind", "[effects][crit]")
+{
+	CritFixture fixture;
+	fixture.table[kPer].effects["Crit"] = namedEffect(NamedEffect::CritChancePhysical, 1.0, CurveInput::Absolute);
+	initStat(fixture.actor, kPer, 10);
+
+	// DEX 5, plus PER's absolute 10
+	CHECK(baseCritChance(fixture.actor, fixture.table, CritKind::Physical) == 15.0);
+	CHECK(baseCritChance(fixture.actor, fixture.table, CritKind::Magic) == 2.5);
+}
+
+TEST_CASE("crit shifts from two owners add up and get the kind and the current base chance", "[effects][crit]")
+{
+	CritFixture       fixture;
+	CritShiftRegistry shifts;
+	CritCalls         calls;
+	REQUIRE(shifts.set("Luck", recordingShift(calls)));
+	REQUIRE(shifts.set("Other:Mod", tenthOfBase));
+
+	CHECK(critChance(fixture.actor, fixture.table, shifts, CritKind::Physical) == 5.0 + 1.0 + 0.5);
+	CHECK(critChance(fixture.actor, fixture.table, shifts, CritKind::Magic) == 2.5 + 1.0 + 0.25);
+	CHECK(calls == CritCalls{ { CritKind::Physical, 5.0 }, { CritKind::Magic, 2.5 } });
+
+	// The shift sees the stat change at once.
+	fixture.actor.values[kDex].accumulated = 20;
+	CHECK(critChance(fixture.actor, fixture.table, shifts, CritKind::Physical) == 10.0 + 1.0 + 1.0);
+	CHECK(calls.back() == std::pair{ CritKind::Physical, 10.0 });
+}
+
+TEST_CASE("removing an owner removes its crit shift", "[effects][crit]")
+{
+	CritFixture       fixture;
+	CritShiftRegistry shifts;
+	REQUIRE(shifts.set("Luck", constantShift(1.0)));
+	REQUIRE(shifts.set("Other:Mod", constantShift(2.0)));
+
+	shifts.remove("Luck");
+	shifts.remove("Unknown");
+
+	CHECK(critChance(fixture.actor, fixture.table, shifts, CritKind::Physical) == 7.0);
+}
+
+TEST_CASE("setting a crit shift again replaces it; an empty owner or function is rejected", "[effects][crit]")
+{
+	CritFixture       fixture;
+	CritShiftRegistry shifts;
+	REQUIRE(shifts.set("Luck", constantShift(1.0)));
+	REQUIRE(shifts.set("Luck", constantShift(3.0)));
+
+	CHECK_FALSE(shifts.set("", constantShift(1.0)));
+	CHECK_FALSE(shifts.set("Luck", CritShift{}));
+
+	CHECK(critChance(fixture.actor, fixture.table, shifts, CritKind::Physical) == 8.0);
 }
