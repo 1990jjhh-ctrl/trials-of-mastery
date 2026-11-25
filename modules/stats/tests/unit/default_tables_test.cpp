@@ -154,11 +154,14 @@ TEST_CASE("the schemas reject what the entry validators reject", "[tables][data]
 	CHECK(rejects("incompatible", { { "Requiem", { { "plugins", json::array() } } } }));
 	CHECK(rejects("incompatible", { { "Requiem", { { "plugins", { "" } } } } }));
 	CHECK(rejects("stats", { { "STR", { { "raceAdjustments", { { "NordRace", 0.5 } } } } } }));
+	CHECK(rejects("stats", { { "DEX", { { "effects", { { "CritChanceMagic", { { "input", "total" } } } } } } } }));
+	CHECK(rejects("stats", { { "STR", { { "effects", { { "CarryCapacity", { { "input", "absolute" } } } } } } } }));
 
 	CHECK_FALSE(rejects("stats", { { "Luck:LUC", { { "base", 0 } } } }));
 	CHECK_FALSE(rejects("skills", { { "CSF:Swimming", { { "primary", "STR" }, { "secondary", "DEX" }, { "primaryShare", 1 } } } }));
 	CHECK_FALSE(rejects("actions", { { "Fish:Catch", json::object() } }));
 	CHECK_FALSE(rejects("stats", { { "STR", { { "base", 10.0 }, { "raceAdjustments", { { "NordRace", 1 } } } } } }));
+	CHECK_FALSE(rejects("stats", { { "DEX", { { "effects", { { "CritChanceMagic", { { "input", "absolute" } } } } } } } }));
 }
 
 TEST_CASE("the validator throws on a schema keyword it does not know, also inside anyOf", "[tables][schema]")
@@ -185,7 +188,7 @@ TEST_CASE("the schemas and buildTables ship the same names", "[tables][data][sch
 	CHECK(enumNames(common, "/$defs/coreStat/enum") == coreStats);
 	CHECK(enumNames(common, "/$defs/vanillaSkill/enum") == setOf(tom::stats::vanillaSkills()));
 	CHECK(enumNames(actions, "/propertyNames/anyOf/0/enum") == setOf(tom::stats::builtInActions()));
-	CHECK(enumNames(stats, "/$defs/effect/properties/named/enum") == setOf(tom::stats::namedEffectNames()));
+	CHECK(enumNames(stats, "/$defs/namedEffect/properties/named/enum") == setOf(tom::stats::namedEffectNames()));
 }
 
 TEST_CASE("the shipped skills hold the default mapping of ST-27", "[tables][data]")
