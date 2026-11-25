@@ -13,6 +13,7 @@ add_library(tom_stats_core STATIC
     core/src/stat_value.cpp
     core/src/table_folder.cpp
     core/src/table_merge.cpp
+    core/src/training.cpp
     core/src/xp_modifiers.cpp
 )
 target_include_directories(tom_stats_core PUBLIC core/include)
@@ -38,6 +39,7 @@ if(TOM_BUILD_TESTS)
         tests/unit/table_folder_test.cpp
         tests/unit/table_merge_test.cpp
         tests/unit/tables_test.cpp
+        tests/unit/training_test.cpp
         tests/unit/xp_modifiers_test.cpp
     )
     target_link_libraries(tom_stats_core_tests PRIVATE tom_stats_core Catch2::Catch2WithMain)
