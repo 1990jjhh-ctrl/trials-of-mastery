@@ -58,7 +58,7 @@
           "enum": ["CritChancePhysical", "CritChanceMagic", "LearningSpeed", "DamageRedirection", "MagicDamage"]
         },
         "input": {
-          "description": "The curve's input (ST-9): \"relative\" is the effective stat minus the start value, \"absolute\" the effective stat. Without it, relative.",
+          "description": "The curve's input (ST-9): \"relative\" is the effective stat minus the default base, \"absolute\" the effective stat. Without it, relative.",
           "enum": ["relative", "absolute"]
         },
         "curve": { "$ref": "common.schema.json#/$defs/curve" },

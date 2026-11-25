@@ -15,9 +15,11 @@ namespace tom::stats
 {
 
 // What an actor-value effect adds to its actor value: curve(x) - curve(0) with
-// x = effective - start (ST-10), so a new character gets 0. Follows IEEE
-// arithmetic like evaluate(); the result can be infinite or NaN.
-[[nodiscard]] double avContribution(const Curve& curve, double effective, double start);
+// x = effective - defaultBase (ST-10), so a new character without adjustments
+// gets 0. defaultBase is the default base last applied to the stat (Stats
+// plan, assumption 12). Follows IEEE arithmetic like evaluate(); the result
+// can be infinite or NaN.
+[[nodiscard]] double avContribution(const Curve& curve, double effective, double defaultBase);
 
 // The last contribution of one actor to each actor value (ST-10), as stored in
 // the save. An actor value without an entry has a contribution of 0.
@@ -64,11 +66,11 @@ struct RedirectSplit
 // redirected.
 [[nodiscard]] RedirectSplit splitDamage(double damage, double share, double poolAvailable);
 
-// The value of a named effect for an actor: curve(x) of every entry of the
-// effect, summed over all stats in the table that list it (ST-9). x is the
-// effective stat for an absolute input and effective - start for a relative
-// one. Follows IEEE arithmetic like evaluate(). As for updateContributions,
-// the caller passes the active stats only.
+// The value of a named effect for an actor, summed over all stats in the table
+// that list it (ST-9): curve(effective) for an absolute input and, like an
+// actor-value effect, avContribution() from the stat's default base for a
+// relative one. Follows IEEE arithmetic like evaluate(). As for
+// updateContributions, the caller passes the active stats only.
 [[nodiscard]] double namedEffectValue(const ActorStats& actor, const StatsTable& stats, NamedEffect effect);
 
 // The share of damage taken that goes into a pool (ST-11), for splitDamage.

@@ -12,22 +12,24 @@ namespace
 {
 using Totals = std::map<std::string, double>;
 
-[[nodiscard]] double startValue(const ActorStats& actor, const StatId& id)
+// The reference of relative effects: the default base last applied to the
+// stat, 0 if none was (Stats plan, assumption 12).
+[[nodiscard]] double appliedDefaultBase(const ActorStats& actor, const StatId& id)
 {
-	const auto it = actor.startValues.find(id);
-	return it == actor.startValues.end() ? 0.0 : it->second;
+	const auto it = actor.defaultBases.find(id);
+	return it == actor.defaultBases.end() ? 0.0 : it->second;
 }
 
 void addStatContributions(Totals& totals, const ActorStats& actor, const StatId& id, const StatEntry& entry)
 {
 	const double value = effective(actor, id);
-	const double start = startValue(actor, id);
+	const double reference = appliedDefaultBase(actor, id);
 	for (const auto& [name, effect] : entry.effects) {
 		const auto* target = std::get_if<ActorValueTarget>(&effect.target);
 		if (target == nullptr) {
 			continue;
 		}
-		totals[target->name] += avContribution(effect.curve, value, start);
+		totals[target->name] += avContribution(effect.curve, value, reference);
 	}
 }
 
@@ -36,15 +38,14 @@ void addStatContributions(Totals& totals, const ActorStats& actor, const StatId&
 	NamedEffect named)
 {
 	const double value = effective(actor, id);
-	const double start = startValue(actor, id);
+	const double reference = appliedDefaultBase(actor, id);
 	double       sum = 0.0;
 	for (const auto& [name, effect] : entry.effects) {
 		const auto* target = std::get_if<NamedEffect>(&effect.target);
 		if (target == nullptr || *target != named) {
 			continue;
 		}
-		const double x = effect.input == CurveInput::Absolute ? value : value - start;
-		sum += evaluate(effect.curve, x);
+		sum += effect.input == CurveInput::Absolute ? evaluate(effect.curve, value) : avContribution(effect.curve, value, reference);
 	}
 	return sum;
 }
@@ -63,9 +64,9 @@ void addStatContributions(Totals& totals, const ActorStats& actor, const StatId&
 }
 }
 
-double avContribution(const Curve& curve, double effective, double start)
+double avContribution(const Curve& curve, double effective, double defaultBase)
 {
-	return evaluate(curve, effective - start) - evaluate(curve, 0.0);
+	return evaluate(curve, effective - defaultBase) - evaluate(curve, 0.0);
 }
 
 std::vector<AvDelta> updateContributions(ContributionLedger& ledger, const ActorStats& actor, const StatsTable& stats)

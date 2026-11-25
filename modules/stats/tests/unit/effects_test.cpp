@@ -17,6 +17,7 @@
 using Catch::Matchers::WithinRel;
 using tom::stats::ActorStats;
 using tom::stats::ActorValueTarget;
+using tom::stats::applyDefaultBase;
 using tom::stats::ascend;
 using tom::stats::AsymptoticCurve;
 using tom::stats::avContribution;
@@ -30,6 +31,7 @@ using tom::stats::CritShiftRegistry;
 using tom::stats::CurveInput;
 using tom::stats::damageRedirectionShare;
 using tom::stats::Effect;
+using tom::stats::evaluate;
 using tom::stats::initStat;
 using tom::stats::learningBonus;
 using tom::stats::LinearCurve;
@@ -37,6 +39,7 @@ using tom::stats::NamedEffect;
 using tom::stats::namedEffectValue;
 using tom::stats::PowerCurve;
 using tom::stats::RedirectSplit;
+using tom::stats::removeBaseAdjustment;
 using tom::stats::setBaseAdjustment;
 using tom::stats::splitDamage;
 using tom::stats::StatEntry;
@@ -74,25 +77,94 @@ ActorStats newActor()
 	initStat(actor, kEnd, 10);
 	return actor;
 }
+
+// b and S give curves that are not 0 at x = 0; only the difference to it
+// counts.
+const LinearCurve     kOffsetLinear{ .a = 5.0, .b = 3.0 };
+const AsymptoticCurve kOffsetAsymptotic{ .start = 2.0, .end = 6.0, .c = 0.1 };
+
+// CON with an actor-value and a relative named effect on each offset curve.
+StatsTable offsetTable()
+{
+	StatsTable table;
+	table[kCon].effects["Health"] = Effect{ .target = ActorValueTarget{ "Health" }, .curve = kOffsetLinear };
+	table[kCon].effects["Stamina"] = Effect{ .target = ActorValueTarget{ "Stamina" }, .curve = kOffsetAsymptotic };
+	table[kCon].effects["MagicDamage"] = Effect{ .target = NamedEffect::MagicDamage, .curve = kOffsetLinear };
+	table[kCon].effects["Learning"] = Effect{ .target = NamedEffect::LearningSpeed, .curve = kOffsetAsymptotic };
+	return table;
+}
+
+// What a stat 2 above its default base gives on each offset curve.
+const double kLinearAt2 = evaluate(kOffsetLinear, 2.0) - evaluate(kOffsetLinear, 0.0);
+const double kAsymptoticAt2 = evaluate(kOffsetAsymptotic, 2.0) - evaluate(kOffsetAsymptotic, 0.0);
 }
 
 TEST_CASE("a new character gets a zero contribution", "[effects][contribution]")
 {
-	// b and S give a curve that is not 0 at x = 0; only the difference counts.
-	CHECK(avContribution(LinearCurve{ .a = 5.0, .b = 3.0 }, 10.0, 10.0) == 0.0);
-	CHECK(avContribution(AsymptoticCurve{ .start = 2.0, .end = 6.0, .c = 0.1 }, 12.0, 12.0) == 0.0);
+	CHECK(avContribution(kOffsetLinear, 10.0, 10.0) == 0.0);
+	CHECK(avContribution(kOffsetAsymptotic, 12.0, 12.0) == 0.0);
 
 	ContributionLedger ledger;
 	CHECK(updateContributions(ledger, newActor(), poolTable()).empty());
+	CHECK(updateContributions(ledger, newActor(), offsetTable()).empty());
 	CHECK(ledger.contributions.empty());
 }
 
-TEST_CASE("the contribution is curve(x) - curve(0) of the stat above its start value", "[effects][contribution]")
+TEST_CASE("the contribution is curve(x) - curve(0) of the stat above its default base", "[effects][contribution]")
 {
-	CHECK(avContribution(LinearCurve{ .a = 5.0, .b = 3.0 }, 14.0, 10.0) == 20.0);
+	CHECK(avContribution(kOffsetLinear, 14.0, 10.0) == 20.0);
 	CHECK(avContribution(PowerCurve{ .alpha = 2.0, .lambda = 0.5 }, 19.0, 10.0) == 6.0);
-	// Below the start value the contribution is negative.
-	CHECK(avContribution(LinearCurve{ .a = 5.0, .b = 3.0 }, 8.0, 10.0) == -10.0);
+	// Below the default base the contribution is negative.
+	CHECK(avContribution(kOffsetLinear, 8.0, 10.0) == -10.0);
+}
+
+TEST_CASE("a race adjustment counts from character creation on", "[effects][contribution][base]")
+{
+	const StatsTable table = offsetTable();
+	ActorStats       actor;
+	setBaseAdjustment(actor, kCon, "race", 2);
+	initStat(actor, kCon, 10);
+	ContributionLedger ledger;
+
+	CHECK(updateContributions(ledger, actor, table) == std::vector<AvDelta>{ { .actorValue = "Health", .delta = kLinearAt2 }, { .actorValue = "Stamina", .delta = kAsymptoticAt2 } });
+	CHECK(namedEffectValue(actor, table, NamedEffect::MagicDamage) == kLinearAt2);
+	CHECK(namedEffectValue(actor, table, NamedEffect::LearningSpeed) == kAsymptoticAt2);
+}
+
+TEST_CASE("an adjustment added or removed later changes the contribution by the difference", "[effects][contribution][base]")
+{
+	const StatsTable   table = offsetTable();
+	ActorStats         actor = newActor();
+	ContributionLedger ledger;
+	REQUIRE(updateContributions(ledger, actor, table).empty());
+
+	setBaseAdjustment(actor, kCon, "class", 2);
+
+	CHECK(updateContributions(ledger, actor, table) == std::vector<AvDelta>{ { .actorValue = "Health", .delta = kLinearAt2 }, { .actorValue = "Stamina", .delta = kAsymptoticAt2 } });
+
+	removeBaseAdjustment(actor, kCon, "class");
+
+	CHECK(updateContributions(ledger, actor, table) == std::vector<AvDelta>{ { .actorValue = "Health", .delta = -kLinearAt2 }, { .actorValue = "Stamina", .delta = -kAsymptoticAt2 } });
+	CHECK(ledger.contributions.empty());
+}
+
+TEST_CASE("a changed default base at multiplier 1 leaves the effects alone", "[effects][contribution][base]")
+{
+	const StatsTable table = offsetTable();
+	ActorStats       actor = newActor();
+	setBaseAdjustment(actor, kCon, "race", 2);
+	actor.values[kCon].accumulated = 3;
+	ContributionLedger ledger;
+	(void)updateContributions(ledger, actor, table);
+	const double magicDamage = namedEffectValue(actor, table, NamedEffect::MagicDamage);
+	const double learning = namedEffectValue(actor, table, NamedEffect::LearningSpeed);
+
+	applyDefaultBase(actor, kCon, 12);
+
+	REQUIRE(actor.values.at(kCon).base == 14);
+	CHECK(updateContributions(ledger, actor, table).empty());
+	CHECK(namedEffectValue(actor, table, NamedEffect::MagicDamage) == magicDamage);
+	CHECK(namedEffectValue(actor, table, NamedEffect::LearningSpeed) == learning);
 }
 
 TEST_CASE("a stat change yields only the difference", "[effects][contribution]")
@@ -131,7 +203,7 @@ TEST_CASE("effects of several stats on one actor value add up", "[effects][contr
 	CHECK(ledger.contributions.size() == 2);
 }
 
-TEST_CASE("modifier and multiplier move the contribution, base adjustments don't", "[effects][contribution]")
+TEST_CASE("modifier and multiplier move the contribution", "[effects][contribution]")
 {
 	const StatsTable   table = poolTable();
 	ActorStats         actor = newActor();
@@ -141,13 +213,10 @@ TEST_CASE("modifier and multiplier move the contribution, base adjustments don't
 	(void)updateContributions(ledger, actor, table);
 	CHECK(ledger.contributions.at("Health") == 10.0);
 
-	setBaseAdjustment(actor, kCon, "class", -3);
-	CHECK(updateContributions(ledger, actor, table).empty());
-
-	// (7 * 2 + 2) - 7
+	// (10 * 2 + 2) - 10
 	actor.multiplier = 2.0;
 	(void)updateContributions(ledger, actor, table);
-	CHECK(ledger.contributions.at("Health") == 45.0);
+	CHECK(ledger.contributions.at("Health") == 60.0);
 }
 
 TEST_CASE("ascending shrinks the contributions", "[effects][contribution]")
@@ -241,7 +310,7 @@ Effect namedEffect(NamedEffect effect, double a, CurveInput input = CurveInput::
 	return Effect{ .target = effect, .curve = LinearCurve{ .a = a, .b = 0.0 }, .input = input };
 }
 
-// INT and PER at a start value of 10, each with points above it.
+// INT and PER at a default base of 10, each with points above it.
 ActorStats learner(std::int32_t intAbove, std::int32_t perAbove)
 {
 	ActorStats actor;
@@ -253,7 +322,7 @@ ActorStats learner(std::int32_t intAbove, std::int32_t perAbove)
 }
 }
 
-TEST_CASE("a named effect takes effective - start, or the effective stat when absolute", "[effects][named]")
+TEST_CASE("a named effect takes effective - default base, or the effective stat when absolute", "[effects][named]")
 {
 	const ActorStats actor = learner(4, 0);
 	StatsTable       table;
@@ -263,6 +332,19 @@ TEST_CASE("a named effect takes effective - start, or the effective stat when ab
 
 	table[kInt].effects["MagicDamage"] = namedEffect(NamedEffect::MagicDamage, 0.01, CurveInput::Absolute);
 	CHECK_THAT(namedEffectValue(actor, table, NamedEffect::MagicDamage), WithinRel(0.14));
+}
+
+TEST_CASE("a relative named effect subtracts curve(0), an absolute one doesn't", "[effects][named]")
+{
+	const ActorStats actor = learner(4, 0);
+	StatsTable       table;
+
+	table[kInt].effects["MagicDamage"] = Effect{ .target = NamedEffect::MagicDamage, .curve = LinearCurve{ .a = 0.01, .b = 1.0 } };
+	CHECK_THAT(namedEffectValue(actor, table, NamedEffect::MagicDamage), WithinRel(0.04));
+	CHECK(namedEffectValue(learner(0, 0), table, NamedEffect::MagicDamage) == 0.0);
+
+	table[kInt].effects["MagicDamage"].input = CurveInput::Absolute;
+	CHECK_THAT(namedEffectValue(actor, table, NamedEffect::MagicDamage), WithinRel(1.14));
 }
 
 TEST_CASE("a named effect adds up over every stat that lists it, registered ones included", "[effects][named]")
@@ -338,7 +420,7 @@ namespace
 {
 const StatId kDex{ "DEX" };
 
-// DEX 10 above a start value of 10, with a crit effect per kind.
+// DEX 10 above a default base of 10, with a crit effect per kind.
 struct CritFixture
 {
 	ActorStats actor;
