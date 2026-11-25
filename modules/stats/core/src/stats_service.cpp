@@ -39,6 +39,19 @@ template <typename T, typename Valid>
 {
 	return valid(value) ? value : fallback;
 }
+
+// Removes the modifier under key, and the stat's map once it is empty.
+void eraseModifier(ActorStats& stats, const StatId& stat, const ModifierKey& key)
+{
+	const auto it = stats.modifiers.find(stat);
+	if (it == stats.modifiers.end()) {
+		return;
+	}
+	it->second.erase(key);
+	if (it->second.empty()) {
+		stats.modifiers.erase(it);
+	}
+}
 }
 
 StatsService::StatsService(const Settings& settings, Tables tables, ActorId player) :
@@ -156,6 +169,86 @@ std::expected<double, Error> StatsService::damageRedirectionShare(ActorId actor)
 		[this](const ActorState* state) { return tom::stats::damageRedirectionShare(state->stats, activeTable_); });
 }
 
+std::expected<std::vector<AvDelta>, Error> StatsService::addXp(ActorId actor, const StatId& stat, double xp)
+{
+	if (actor != player_) {
+		return rejected(std::format("actor {:08X} is not the player; only the player trains stats", actor));
+	}
+	if (!std::isfinite(xp) || xp <= 0.0) {
+		return rejected(std::format("XP {} for stat '{}' is not positive and finite", xp, stat.name));
+	}
+	return findStat(actor, stat).transform([&](ActorState* state) {
+		(void)tom::stats::addXp(state->stats.values[stat], xp, r_);
+		return updateEffects(*state);
+	});
+}
+
+std::expected<std::vector<AvDelta>, Error> StatsService::setValues(ActorId actor, const StatId& stat, const StatValue& value)
+{
+	if (value.accumulated < 0 || value.active < 0) {
+		return rejected(std::format("negative points for stat '{}'", stat.name));
+	}
+	if (!std::isfinite(value.xp) || value.xp < 0.0) {
+		return rejected(std::format("XP {} for stat '{}' is negative or not finite", value.xp, stat.name));
+	}
+	return findStat(actor, stat).transform([&](ActorState* state) {
+		state->stats.values[stat] = value;
+		return updateEffects(*state);
+	});
+}
+
+std::expected<std::vector<AvDelta>, Error> StatsService::setModifier(ActorId actor, const StatId& stat, const ModifierKey& key, std::int32_t amount)
+{
+	if (key.empty()) {
+		return rejected(std::format("empty modifier key for stat '{}'", stat.name));
+	}
+	return findStat(actor, stat).transform([&](ActorState* state) {
+		state->stats.modifiers[stat][key] = amount;
+		return updateEffects(*state);
+	});
+}
+
+std::expected<std::vector<AvDelta>, Error> StatsService::removeModifier(ActorId actor, const StatId& stat, const ModifierKey& key)
+{
+	return findStat(actor, stat).transform([&](ActorState* state) {
+		eraseModifier(state->stats, stat, key);
+		return updateEffects(*state);
+	});
+}
+
+std::expected<std::vector<AvDelta>, Error> StatsService::setMultiplier(ActorId actor, double multiplier)
+{
+	if (!std::isfinite(multiplier)) {
+		return rejected(std::format("multiplier {} is not finite", multiplier));
+	}
+	return findActor(actor).transform([&](ActorState* state) {
+		state->stats.multiplier = multiplier;
+		return updateEffects(*state);
+	});
+}
+
+std::expected<std::vector<AvDelta>, Error> StatsService::setBaseAdjustment(ActorId actor, const StatId& stat, const BaseAdjustmentKey& key, std::int32_t amount)
+{
+	if (const auto valid = checkAdjustmentKey(key); !valid) {
+		return std::unexpected(valid.error());
+	}
+	return findStat(actor, stat).transform([&](ActorState* state) {
+		tom::stats::setBaseAdjustment(state->stats, stat, key, amount);
+		return updateEffects(*state);
+	});
+}
+
+std::expected<std::vector<AvDelta>, Error> StatsService::removeBaseAdjustment(ActorId actor, const StatId& stat, const BaseAdjustmentKey& key)
+{
+	if (const auto valid = checkAdjustmentKey(key); !valid) {
+		return std::unexpected(valid.error());
+	}
+	return findStat(actor, stat).transform([&](ActorState* state) {
+		tom::stats::removeBaseAdjustment(state->stats, stat, key);
+		return updateEffects(*state);
+	});
+}
+
 std::int32_t StatsService::defaultBase(const StatId& stat) const
 {
 	const auto it = tables_.stats.find(stat);
@@ -221,6 +314,14 @@ std::expected<StatsService::ActorState*, Error> StatsService::findActor(ActorId 
 	return &it->second;
 }
 
+std::expected<StatsService::ActorState*, Error> StatsService::findStat(ActorId actor, const StatId& stat)
+{
+	if (const auto active = checkActive(stat); !active) {
+		return std::unexpected(active.error());
+	}
+	return findActor(actor);
+}
+
 std::expected<void, Error> StatsService::checkActive(const StatId& stat) const
 {
 	if (!registry_.contains(stat)) {
@@ -228,6 +329,17 @@ std::expected<void, Error> StatsService::checkActive(const StatId& stat) const
 	}
 	if (registry_.isDormant(stat)) {
 		return rejected(std::format("stat '{}' is dormant: its owner has not registered it", stat.name));
+	}
+	return {};
+}
+
+std::expected<void, Error> StatsService::checkAdjustmentKey(const BaseAdjustmentKey& key)
+{
+	if (key.empty()) {
+		return rejected("empty base adjustment key");
+	}
+	if (key == kRaceAdjustmentKey) {
+		return rejected(std::format("the base adjustment key '{}' belongs to the module", key));
 	}
 	return {};
 }

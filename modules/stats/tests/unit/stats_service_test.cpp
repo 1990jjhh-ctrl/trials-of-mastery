@@ -10,6 +10,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <limits>
+#include <string>
 #include <vector>
 
 using tom::stats::ActorStats;
@@ -18,8 +20,10 @@ using tom::stats::AvDeltasByActor;
 using tom::stats::ContributionLedger;
 using tom::stats::FreePoints;
 using tom::stats::initStat;
+using tom::stats::kRaceAdjustmentKey;
 using tom::stats::StatReading;
 using tom::stats::StatsService;
+using tom::stats::StatValue;
 
 using namespace service_test;
 
@@ -216,4 +220,114 @@ TEST_CASE("invalid settings fall back to the built-in defaults", "[stats_service
 	CHECK(stats.r() == defaults.costGrowth);
 	CHECK(stats.n() == defaults.advanceInterval);
 	CHECK(stats.freePointsPerLevelUp() == defaults.freePointsPerLevelUp);
+}
+
+TEST_CASE("XP buys points for the player at r", "[stats_service][xp]")
+{
+	StatsService stats = service();
+	REQUIRE(stats.addActor(kPlayer, "ImperialRace"));
+
+	// 100 for the first point and 200 for the second at r = 2, 50 left over.
+	const auto deltas = stats.addXp(kPlayer, kCon, 350.0);
+
+	REQUIRE(deltas);
+	CHECK(*deltas == std::vector<AvDelta>{ { .actorValue = "Health", .delta = above(kHealthCurve, 2.0) } });
+	CHECK(stats.read(kPlayer, kCon) == StatReading{ .base = 10, .active = 2, .xp = 50.0, .effective = 12.0 });
+}
+
+TEST_CASE("XP is refused for NPCs, inactive stats and invalid amounts", "[stats_service][xp]")
+{
+	StatsService stats = service();
+	REQUIRE(stats.addActor(kPlayer, "ImperialRace"));
+	REQUIRE(stats.addActor(kNpc, "ImperialRace"));
+
+	CHECK_FALSE(stats.addXp(kNpc, kCon, 100.0));
+	CHECK_FALSE(stats.addXp(kPlayer, kLuck, 100.0));
+	CHECK_FALSE(stats.addXp(kPlayer, kCon, 0.0));
+	CHECK_FALSE(stats.addXp(kPlayer, kCon, -5.0));
+	CHECK_FALSE(stats.addXp(kPlayer, kCon, std::numeric_limits<double>::quiet_NaN()));
+	CHECK_FALSE(stats.addXp(kPlayer, kCon, std::numeric_limits<double>::infinity()));
+	CHECK(stats.read(kPlayer, kCon) == StatReading{ .base = 10, .effective = 10.0 });
+}
+
+TEST_CASE("set values replace the stat's values", "[stats_service][values]")
+{
+	StatsService stats = service();
+	REQUIRE(stats.addActor(kNpc, "NordRace"));
+
+	const auto deltas = stats.setValues(kNpc, kCon, StatValue{ .base = 15, .accumulated = 4, .active = 1, .xp = 30.0 });
+
+	REQUIRE(deltas);
+	// The race adjustment of 2 is already in the base of 12.
+	CHECK(*deltas == std::vector<AvDelta>{ { .actorValue = "Health", .delta = above(kHealthCurve, 10.0) - above(kHealthCurve, 2.0) } });
+	CHECK(stats.read(kNpc, kCon) == StatReading{ .base = 15, .accumulated = 4, .active = 1, .xp = 30.0, .effective = 20.0 });
+}
+
+TEST_CASE("set values refuse negative points and invalid XP", "[stats_service][values]")
+{
+	StatsService stats = service();
+	REQUIRE(stats.addActor(kNpc, "ImperialRace"));
+
+	CHECK_FALSE(stats.setValues(kNpc, kCon, StatValue{ .base = 10, .accumulated = -1 }));
+	CHECK_FALSE(stats.setValues(kNpc, kCon, StatValue{ .base = 10, .active = -1 }));
+	CHECK_FALSE(stats.setValues(kNpc, kCon, StatValue{ .base = 10, .xp = -1.0 }));
+	CHECK_FALSE(stats.setValues(kNpc, kCon, StatValue{ .base = 10, .xp = std::numeric_limits<double>::infinity() }));
+	CHECK_FALSE(stats.setValues(kNpc, kLuck, StatValue{ .base = 10 }));
+	CHECK_FALSE(stats.setValues(kPlayer, kCon, StatValue{ .base = 10 }));
+	// A negative base is valid: adjustments can take it below 0.
+	CHECK(stats.setValues(kNpc, kCon, StatValue{ .base = -3 }));
+}
+
+TEST_CASE("modifiers under several keys add up and are removed by key", "[stats_service][modifier]")
+{
+	StatsService stats = service();
+	REQUIRE(stats.addActor(kNpc, "ImperialRace"));
+
+	CHECK(stats.setModifier(kNpc, kCon, "Mod:Ring", 3) == std::vector<AvDelta>{ { .actorValue = "Health", .delta = above(kHealthCurve, 3.0) } });
+	REQUIRE(stats.setModifier(kNpc, kCon, "Mod:Spell", -1));
+	CHECK(stats.read(kNpc, kCon) == StatReading{ .base = 10, .modifier = 2, .effective = 12.0 });
+
+	CHECK(stats.removeModifier(kNpc, kCon, "Mod:Ring") == std::vector<AvDelta>{ { .actorValue = "Health", .delta = above(kHealthCurve, -1.0) - above(kHealthCurve, 2.0) } });
+	CHECK(stats.read(kNpc, kCon)->modifier == -1);
+	CHECK(stats.removeModifier(kNpc, kCon, "Mod:Ring") == std::vector<AvDelta>{});
+	CHECK_FALSE(stats.setModifier(kNpc, kCon, "", 1));
+}
+
+TEST_CASE("the multiplier scales the points but not the modifier", "[stats_service][multiplier]")
+{
+	StatsService stats = service();
+	REQUIRE(stats.addActor(kNpc, "ImperialRace"));
+	REQUIRE(stats.setModifier(kNpc, kCon, "Mod:Ring", 1));
+
+	REQUIRE(stats.setMultiplier(kNpc, 1.5));
+
+	CHECK(stats.read(kNpc, kCon)->effective == 16.0);
+	CHECK_FALSE(stats.setMultiplier(kNpc, std::numeric_limits<double>::quiet_NaN()));
+	CHECK_FALSE(stats.setMultiplier(kPlayer, 1.0));
+	CHECK(stats.read(kNpc, kCon)->effective == 16.0);
+}
+
+TEST_CASE("a base adjustment changes the pools by its difference", "[stats_service][base]")
+{
+	StatsService stats = service();
+	REQUIRE(stats.addActor(kPlayer, "ImperialRace"));
+
+	CHECK(stats.setBaseAdjustment(kPlayer, kCon, "Professions:Class", 2) == std::vector<AvDelta>{ { .actorValue = "Health", .delta = above(kHealthCurve, 2.0) } });
+	CHECK(stats.read(kPlayer, kCon)->base == 12);
+
+	CHECK(stats.removeBaseAdjustment(kPlayer, kCon, "Professions:Class") == std::vector<AvDelta>{ { .actorValue = "Health", .delta = -above(kHealthCurve, 2.0) } });
+	CHECK(stats.read(kPlayer, kCon)->base == 10);
+	CHECK(stats.removeBaseAdjustment(kPlayer, kCon, "Professions:Class") == std::vector<AvDelta>{});
+}
+
+TEST_CASE("the race key and an empty key are refused as base adjustment keys", "[stats_service][base]")
+{
+	StatsService stats = service();
+	REQUIRE(stats.addActor(kPlayer, "NordRace"));
+	const std::string race{ kRaceAdjustmentKey };
+
+	CHECK_FALSE(stats.setBaseAdjustment(kPlayer, kCon, race, 5));
+	CHECK_FALSE(stats.removeBaseAdjustment(kPlayer, kCon, race));
+	CHECK_FALSE(stats.setBaseAdjustment(kPlayer, kCon, "", 5));
+	CHECK(stats.read(kPlayer, kCon)->base == 12);
 }

@@ -113,6 +113,41 @@ public:
 	[[nodiscard]] std::expected<double, Error> learningBonus(ActorId actor) const;
 	[[nodiscard]] std::expected<double, Error> damageRedirectionShare(ActorId actor) const;
 
+	// The changes below fail, and change nothing, for an unknown actor and
+	// for a stat that is not active. On success they return the AvDeltas of
+	// the change (ST-10).
+
+	// Adds XP to a stat of the player and buys the points it pays for at r
+	// (ST-5). Only the player trains stats (ST-4), so it fails for any other
+	// actor, and for an amount that is not positive and finite.
+	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> addXp(ActorId actor, const StatId& stat, double xp);
+
+	// Sets a stat's values, e.g. for an NPC (ST-26). The base is the one
+	// read() returns, so it includes the base adjustments; the adjustments
+	// and the default base last applied stay as they are. Fails for negative
+	// points and for XP that is negative or not finite.
+	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> setValues(ActorId actor, const StatId& stat,
+		const StatValue& value);
+
+	// Sets or removes the modifier under key (ST-8). Fails for an empty key;
+	// removing a key that is not set changes nothing.
+	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> setModifier(ActorId actor, const StatId& stat,
+		const ModifierKey& key, std::int32_t amount);
+	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> removeModifier(ActorId actor, const StatId& stat,
+		const ModifierKey& key);
+
+	// Sets the actor's multiplier (ST-8). Fails for a value that is not
+	// finite.
+	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> setMultiplier(ActorId actor, double multiplier);
+
+	// Sets or removes the base adjustment under key, which moves the base by
+	// the difference (ST-3). Fails for an empty key and for
+	// kRaceAdjustmentKey; removing a key that is not set changes nothing.
+	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> setBaseAdjustment(ActorId actor, const StatId& stat,
+		const BaseAdjustmentKey& key, std::int32_t amount);
+	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> removeBaseAdjustment(ActorId actor, const StatId& stat,
+		const BaseAdjustmentKey& key);
+
 private:
 	struct ActorState
 	{
@@ -142,6 +177,12 @@ private:
 	[[nodiscard]] std::expected<const ActorState*, Error> findActor(ActorId actor) const;
 	[[nodiscard]] std::expected<ActorState*, Error>       findActor(ActorId actor);
 	[[nodiscard]] std::expected<void, Error>              checkActive(const StatId& stat) const;
+
+	// Fails for an empty key and for the module's race key.
+	[[nodiscard]] static std::expected<void, Error> checkAdjustmentKey(const BaseAdjustmentKey& key);
+
+	// The actor, if it is known and the stat is active.
+	[[nodiscard]] std::expected<ActorState*, Error> findStat(ActorId actor, const StatId& stat);
 
 	Tables                        tables_;
 	StatsTable                    activeTable_;
