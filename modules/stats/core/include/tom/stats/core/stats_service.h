@@ -16,6 +16,7 @@
 #include <expected>
 #include <functional>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <string_view>
@@ -199,6 +200,18 @@ public:
 	// a stat opted out of free points (ST-2), whoever calls it.
 	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> assignFreePoint(const StatId& stat);
 
+	// Sets or replaces, or removes, the owner's crit shift (ST-13, ST-26).
+	// setCritShift returns false, and changes nothing, for an empty owner or
+	// an empty function. Both may be called from inside a shift.
+	bool setCritShift(const std::string& owner, CritShift shift);
+	void removeCritShift(const std::string& owner);
+
+	// The crit chance of that kind from the active stats plus the sum of the
+	// crit shifts (ST-13). The shifts are the ones set when the call starts:
+	// a shift that sets or removes shifts changes only later calls. Fails for
+	// an unknown actor.
+	[[nodiscard]] std::expected<double, Error> critChance(ActorId actor, CritKind kind) const;
+
 private:
 	struct ActorState
 	{
@@ -246,6 +259,8 @@ private:
 	std::set<std::string>         advancingOwners_;
 	std::set<std::string>         pointAssignmentOwners_;
 	std::int32_t                  pendingPoints_ = 0;
+	// Replaced, never changed, so a running critChance() keeps its own.
+	std::shared_ptr<const CritShiftRegistry> critShifts_ = std::make_shared<const CritShiftRegistry>();
 };
 
 }

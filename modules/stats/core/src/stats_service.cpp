@@ -338,6 +338,32 @@ std::expected<std::vector<AvDelta>, Error> StatsService::assignFreePoint(const S
 	});
 }
 
+bool StatsService::setCritShift(const std::string& owner, CritShift shift)
+{
+	auto next = std::make_shared<CritShiftRegistry>(*critShifts_);
+	if (!next->set(owner, std::move(shift))) {
+		return false;
+	}
+	critShifts_ = std::move(next);
+	return true;
+}
+
+void StatsService::removeCritShift(const std::string& owner)
+{
+	auto next = std::make_shared<CritShiftRegistry>(*critShifts_);
+	next->remove(owner);
+	critShifts_ = std::move(next);
+}
+
+std::expected<double, Error> StatsService::critChance(ActorId actor, CritKind kind) const
+{
+	// Holds the shifts of this call, should one of them replace critShifts_.
+	const std::shared_ptr<const CritShiftRegistry> shifts = critShifts_;
+	return findActor(actor).transform([&](const ActorState* state) {
+		return tom::stats::critChance(state->stats, activeTable_, *shifts, kind);
+	});
+}
+
 std::int32_t StatsService::defaultBase(const StatId& stat) const
 {
 	const auto it = tables_.stats.find(stat);
