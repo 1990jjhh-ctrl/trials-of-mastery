@@ -300,6 +300,44 @@ std::expected<std::vector<AvDelta>, Error> StatsService::ascend(ActorId actor, c
 	});
 }
 
+void StatsService::onPlayerLevelUp(std::int32_t newLevel)
+{
+	pendingPoints_ = saturatingAdd(pendingPoints_, freePointsPerLevelUp_);
+	if (advancingClaimed() || newLevel < 1 || newLevel % n_ != 0) {
+		return;
+	}
+	// Without the player there is nothing to advance.
+	(void)advanceAll(player_);
+}
+
+bool StatsService::claimPointAssignment(const std::string& owner)
+{
+	if (owner.empty()) {
+		return false;
+	}
+	pointAssignmentOwners_.insert(owner);
+	return true;
+}
+
+std::expected<std::vector<AvDelta>, Error> StatsService::assignFreePoint(const StatId& stat)
+{
+	if (const auto active = checkActive(stat); !active) {
+		return std::unexpected(active.error());
+	}
+	if (!registry_.getsFreePoints(stat)) {
+		return rejected(std::format("stat '{}' is opted out of free points", stat.name));
+	}
+	if (pendingPoints_ < 1) {
+		return rejected("no free point is pending");
+	}
+	return findActor(player_).transform([&](ActorState* state) {
+		StatValue& value = state->stats.values[stat];
+		value.accumulated = saturatingAdd(value.accumulated, 1);
+		--pendingPoints_;
+		return updateEffects(*state);
+	});
+}
+
 std::int32_t StatsService::defaultBase(const StatId& stat) const
 {
 	const auto it = tables_.stats.find(stat);

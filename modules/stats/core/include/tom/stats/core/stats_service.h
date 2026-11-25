@@ -174,6 +174,31 @@ public:
 	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> ascend(ActorId actor, const StatId& stat,
 		const std::function<double(std::int32_t)>& convert);
 
+	// One real level-up of the player, from the game's level-up flow, which
+	// is the only caller (ST-18). Grants the free points of one level, which
+	// stay pending until they are assigned (ST-20, ST-21). Unless advancing
+	// is claimed, it advances every active stat of the player when newLevel
+	// is a positive multiple of N (ST-6). It takes no previous level, so a
+	// level change that bypassed the level-up never counts, neither for
+	// points nor for advancing.
+	void onPlayerLevelUp(std::int32_t newLevel);
+
+	// Claims point assignment for owner (ST-22): the stat box then shows only
+	// "OK", and the owner assigns the points. Returns false for an empty
+	// owner.
+	bool               claimPointAssignment(const std::string& owner);
+	[[nodiscard]] bool pointAssignmentClaimed() const { return !pointAssignmentOwners_.empty(); }
+
+	// The free points granted and not yet assigned (ST-21).
+	[[nodiscard]] std::int32_t pendingPoints() const { return pendingPoints_; }
+
+	// Moves one pending point into the player's accumulated points of the
+	// stat, so it does not raise the cost (ST-20). Fails, and keeps the point
+	// pending, when none is pending, for an unknown player, for a stat that
+	// is not active (dormant ones included, Stats plan, assumption 8) and for
+	// a stat opted out of free points (ST-2), whoever calls it.
+	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> assignFreePoint(const StatId& stat);
+
 private:
 	struct ActorState
 	{
@@ -219,6 +244,8 @@ private:
 	std::int32_t                  n_;
 	std::int32_t                  freePointsPerLevelUp_;
 	std::set<std::string>         advancingOwners_;
+	std::set<std::string>         pointAssignmentOwners_;
+	std::int32_t                  pendingPoints_ = 0;
 };
 
 }
