@@ -175,7 +175,7 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, detection, sp
 
 ### 7.8 Configuration
 
-- ST-27: The INI holds only single settings: `r` (ST-6, default 2, which equals the mastery module's `r_N` (MA-1) at 0 Ascensions), N (ST-6, default 5), free points per level-up, the stat box key, the stat box lines per page (ST-24; the default is measured in game) and the override of ST-28. Tables live in four JSON files, which players and other mods patch by the merge rules in the [overview](../PRD.md#4-shared-constraints):
+- ST-27: The INI holds only single settings: `r` (ST-6, default 2, which equals the mastery module's `r_N` (MA-1) at 0 Ascensions), N (ST-6, default 5), free points per level-up, the stat box key, the stat box lines per page (ST-24; the default is measured in game), the mods whose ST-28 warning was dismissed and the override of ST-28. Tables live in four JSON files, which players and other mods patch by the merge rules in the [overview](../PRD.md#4-shared-constraints):
   - stats: group, display name and short name, default base, race adjustments (keyed by the race's editor ID) and effects per stat;
   - skills: the skill-to-stat mapping and the primary to secondary split;
   - actions: checks and training per action;
@@ -213,12 +213,15 @@ Status levels and domain ownership are defined in the [overview](../PRD.md#5-com
 | Beyond Mastery | Integrated | Raises skill caps above 100 | Skill levels above 100 keep training stats (ST-16) |
 | Custom Skills Framework | Integrated | Adds skills | Its skills train stats once a mapping is registered (ST-16) |
 | Race overhauls (Races of Skyrim) | Compatible | Change race base pools | Pool contributions are added to the pools, never set (ST-10) |
+| Imperious - Races of Skyrim (Nexus 1315) | Patch | Sets its own race bonuses | Works without the patch; its bonuses don't touch the new stats. A later patch adds race adjustments (ST-3) |
+| Morningstar - Minimalistic Races of Skyrim (Nexus 22298) | Compatible | Sets race boosts and bonuses | Simple boosts, usable as they are; test |
+| Mannaz - Integrated Races of Skyrim (Nexus 87219) | Compatible | Sets race boosts and bonuses | Mostly boosts, usable as they are; test, tweaks may follow |
 | Valhalla Combat | Incompatible | Changes stamina, damage and blocking in ways that conflict with stat effects | Detected at load (ST-28) |
 | Combat overhauls (Wildcat) | Compatible | Damage, stamina and blocking formulas | The combat mod owns formulas; test balance |
 | Level-up menu mods | Compatible | Change or replace the vanilla level-up menu | The stat box replaces the vanilla level-up menu (ST-19); test which one opens |
 | UI mods (SkyUI) | Compatible | None | The stat box is a native message box (ST-24) |
 
-- ST-28: At load, the module detects the mods in the incompatible file (by default the mods the table above marks as detected at load) through the SKSE plugin list and plugin presence, logs the result, shows a warning and disables itself, unless an INI override allows an unsupported run.
+- ST-28: At load, the module detects the mods in the incompatible file (by default the mods the table above marks as detected at load) through the SKSE plugin list and plugin presence, logs the result, shows a warning and disables itself, unless an INI override allows an unsupported run. The warning names each detected mod and has an "OK" and a "Don't show again" button. "Don't show again" stops the warning for the mods it named, per mod, by adding them to a list of dismissed mods in the INI; removing a mod from that list shows its warning again. A dismissed mod still disables the module, and the log still records it at every load.
 
 ## 8. Constraints
 
