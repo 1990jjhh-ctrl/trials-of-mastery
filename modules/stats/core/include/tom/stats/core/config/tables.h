@@ -23,7 +23,8 @@
 namespace tom::stats
 {
 
-// The group of a stat whose entry names none (ST-21).
+// The group of a stat that is not namespaced and whose entry names none; a
+// namespaced stat without a group is in its namespace's group (ST-21).
 inline constexpr std::string_view kOtherGroup = "Other";
 
 // The named effects the module implements (ST-11 to ST-13).
@@ -60,7 +61,8 @@ struct Effect
 	CurveInput                                  input = CurveInput::Relative;
 };
 
-// ST-3, ST-9, ST-21, ST-24.
+// ST-3, ST-9, ST-21, ST-24. When the entry names no group, a namespaced stat
+// is in its namespace's group and any other stat in kOtherGroup.
 struct StatEntry
 {
 	std::string                         group{ kOtherGroup };
@@ -157,6 +159,10 @@ enum class Table
 // The namespacing rule for names that other mods add (ST-27): "<Mod>:<Name>",
 // with one colon and neither part empty.
 [[nodiscard]] bool isNamespaced(std::string_view name);
+
+// The part of a namespaced name before the colon ("Luck" for "Luck:LUC"), or
+// an empty view for a name that is not namespaced.
+[[nodiscard]] std::string_view namespaceOf(std::string_view name);
 
 // The EntryValidator (table_merge.h) of a table: it checks an entry in itself,
 // its name, keys, types, value ranges and curves, but not whether the stats

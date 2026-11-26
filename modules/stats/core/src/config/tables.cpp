@@ -193,12 +193,19 @@ std::map<std::string, std::int32_t> readRaceAdjustments(TableReader& reader, con
 	return adjustments;
 }
 
-StatEntry readStat(TableReader& reader, const json& value, const Pointer& path)
+// The group of a stat whose entry names none (ST-21).
+std::string implicitGroup(std::string_view name)
+{
+	const auto space = namespaceOf(name);
+	return std::string(space.empty() ? kOtherGroup : space);
+}
+
+StatEntry readStat(TableReader& reader, const std::string& name, const json& value, const Pointer& path)
 {
 	reader.checkKeys(value, path, kStatKeys);
-	StatEntry  entry;
-	const auto group = reader.text(reader.field(value, path, "group", false), path / "group");
-	entry.group = group.value_or(std::string(kOtherGroup));
+	StatEntry entry;
+	auto      group = reader.text(reader.field(value, path, "group", false), path / "group");
+	entry.group = group ? std::move(*group) : implicitGroup(name);
 	entry.displayName = reader.text(reader.field(value, path, "displayName", false), path / "displayName");
 	entry.shortName = reader.text(reader.field(value, path, "shortName", false), path / "shortName");
 	entry.defaultBase = reader.int32(reader.field(value, path, "base", true), path / "base").value_or(0);
@@ -325,7 +332,7 @@ TableEntry readEntry(Table table, TableReader& reader, const std::string& name, 
 	}
 	switch (table) {
 	case Table::Stats:
-		return readStat(reader, value, path);
+		return readStat(reader, name, value, path);
 	case Table::Skills:
 		return readSkill(reader, value, path);
 	case Table::Actions:
@@ -474,6 +481,14 @@ bool isNamespaced(std::string_view name)
 {
 	const auto colon = name.find(':');
 	return colon != std::string_view::npos && colon > 0 && colon + 1 < name.size() && name.find(':', colon + 1) == std::string_view::npos;
+}
+
+std::string_view namespaceOf(std::string_view name)
+{
+	if (!isNamespaced(name)) {
+		return {};
+	}
+	return name.substr(0, name.find(':'));
 }
 
 EntryValidator entryValidator(Table table)

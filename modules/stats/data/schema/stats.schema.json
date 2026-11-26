@@ -10,7 +10,7 @@
       "type": "object",
       "properties": {
         "group": {
-          "description": "The stat box group (ST-21). A stat without a group is in \"Other\".",
+          "description": "The stat box group (ST-21). A namespaced stat without a group is in its namespace's group (\"Luck:LUC\" in \"Luck\"), any other stat without one in \"Other\".",
           "type": "string",
           "minLength": 1
         },

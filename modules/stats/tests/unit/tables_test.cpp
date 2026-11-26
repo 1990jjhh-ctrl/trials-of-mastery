@@ -24,6 +24,7 @@ using tom::stats::LinearCurve;
 using tom::stats::MergedTables;
 using tom::stats::MergeResult;
 using tom::stats::NamedEffect;
+using tom::stats::namespaceOf;
 using tom::stats::PluginInfo;
 using tom::stats::PluginQuery;
 using tom::stats::PowerCurve;
@@ -187,6 +188,23 @@ TEST_CASE("a non-text or empty display name or short name skips its file", "[tab
 	CHECK(invalid[0].detail == "/DEX/shortName: must be a non-empty text");
 	CHECK_FALSE(result.merged.at("STR").contains("displayName"));
 	CHECK(result.merged.at("CON").at("shortName") == "CON");
+}
+
+TEST_CASE("a stat without a group is in its namespace's group, or in Other", "[tables]")
+{
+	auto stats = coreStats();
+	stats["STR"]["group"] = "Warrior";
+	stats["Mod:Foo"] = { { "base", 0 } };
+	stats["Mod:Bar"] = { { "base", 0 }, { "group", "Mage" } };
+	auto tables = minimal();
+	tables.stats = merge(Table::Stats, { { "_default.json", stats }, { "ungroup.json", { { "STR", { { "group", nullptr } } } } } });
+
+	const auto result = buildTables(tables);
+
+	REQUIRE(result);
+	CHECK(result->stats.at(StatId{ "Mod:Foo" }).group == "Mod");
+	CHECK(result->stats.at(StatId{ "Mod:Bar" }).group == "Mage");
+	CHECK(result->stats.at(StatId{ "STR" }).group == "Other");
 }
 
 TEST_CASE("an integer may be written with a zero fraction", "[tables]")
@@ -510,4 +528,12 @@ TEST_CASE("the namespacing rule needs one colon between two names", "[tables]")
 	CHECK_FALSE(isNamespaced(":LUC"));
 	CHECK_FALSE(isNamespaced("Luck:"));
 	CHECK_FALSE(isNamespaced("A:B:C"));
+}
+
+TEST_CASE("the namespace of a name is the part before the colon", "[tables]")
+{
+	CHECK(namespaceOf("Luck:LUC") == "Luck");
+	CHECK(namespaceOf("STR").empty());
+	CHECK(namespaceOf(":LUC").empty());
+	CHECK(namespaceOf("A:B:C").empty());
 }
