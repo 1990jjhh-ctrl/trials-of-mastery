@@ -1,7 +1,8 @@
 # Checks every pull request and every push to main with the same scripts a
 # developer runs (CONTRIBUTING.md#ci), including the cross build of the plugin
-# DLLs and the runtime-import check (scripts/build.sh). The toolchain comes
-# from the setup action of lib/skyrim-mod-toolchain.
+# DLLs and the runtime-import check (scripts/build.sh), and the unit tests
+# under ASan and UBSan (the core-asan preset). The toolchain comes from the
+# setup action of lib/skyrim-mod-toolchain.
 name: CI
 
 on:
@@ -62,3 +63,23 @@ jobs:
 
       - name: scripts/build.sh
         run: scripts/build.sh
+
+  # A separate job, so it runs alongside checks instead of lengthening it. The
+  # default c++ of ubuntu-24.04 is GCC 13, which lacks P2718R0, so it catches
+  # dangling temporaries in range-for that newer GCC hides.
+  sanitizers:
+    name: Unit tests (ASan, UBSan)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Set up the cross-compile toolchain
+        uses: ./lib/skyrim-mod-toolchain/.github/actions/setup
+        with:
+          native-tests: "true"
+
+      - name: cmake --workflow --preset core-asan
+        run: cmake --workflow --preset core-asan
