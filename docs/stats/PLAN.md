@@ -112,6 +112,30 @@ These are the user's answers to the decisions in the first draft of this plan.
   - If the Address Library or CommonLibSSE-NG does not support 1.7.104, stop and report.
 - **Depends on:** T1.1. Runs in parallel with Phase 2.
 
+#### T1.3 Unit tests under ASan and UBSan in CI
+
+- **Goal:** CI runs the native unit tests under AddressSanitizer and UndefinedBehaviorSanitizer on every pull request and push to `main`, so a memory or undefined-behaviour error fails CI instead of passing by chance (user decision, 2026-11-26). PR #37's review found a dangling temporary (range-for over `.items()` of a temporary `nlohmann::ordered_json`) that GCC 13 in CI (no P2718R0) produces and local GCC 15 hides; CI had no sanitizer to catch it.
+- **Covers:** success criterion 4 (infrastructure). No PRD requirement changes.
+- **Scope:**
+  - `CMakePresets.json`: a `core-asan` configure, build and test preset, and a `core-asan` workflow preset;
+  - `.github/workflows/ci.yml`: a new job;
+  - `CONTRIBUTING.md#ci`: one bullet for the new job (the list of what CI runs lives there);
+  - `README.md#build-and-test`: one command line for the local run, next to the `scripts/test.sh` lines; the flags stay in `CMakePresets.json`, the README only names the preset.
+  - Not touched: `scripts/test.sh` (it stays on `core`), `lib/skyrim-mod-toolchain`, the module code. The toolchain submodule owns the setup action and the `skse-clangcl` preset only; the `core` preset, the workflow and the sanitizer flags are this project's, so nothing here belongs in the submodule.
+- **Interfaces:**
+  - Configure preset `core-asan`: inherits `core` (so `binaryDir` is `build/core-asan`, and `build/core`, which `lint.sh` reads, is left alone). Adds cache variables `CMAKE_CXX_FLAGS`, `CMAKE_EXE_LINKER_FLAGS` and `CMAKE_SHARED_LINKER_FLAGS`, each `-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all`. No `CMAKE_C_FLAGS`: the project enables only CXX. These are the flags the verifiers have used by hand.
+  - Build preset `core-asan` (configure preset `core-asan`).
+  - Test preset `core-asan`: the `core` test preset's output settings, plus `environment` `ASAN_OPTIONS=halt_on_error=1:detect_leaks=1` and `UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1`.
+  - Workflow preset `core-asan` (presets version 6, which the file already uses, has workflow presets): configure, build and test steps of `core-asan`. The one command, locally and in CI: `cmake --workflow --preset core-asan`. A single test runs with `ctest --preset core-asan -R "<test name>"` after it.
+  - CI job `sanitizers`, named "Unit tests (ASan, UBSan)": `runs-on: ubuntu-24.04` like `checks` (its default `c++` is GCC 13.3), checkout with `submodules: recursive`, the toolchain setup action with `native-tests: "true"` (it provides `VCPKG_ROOT` and the vcpkg binary cache), then `cmake --workflow --preset core-asan`. A separate job, so it runs alongside `checks` and does not lengthen it. Triggers and concurrency are the workflow's, unchanged.
+- **Verification:**
+  - `cmake --workflow --preset core-asan` passes on the branch locally, with all unit tests run (370 at the time of planning), and `scripts/test.sh`, the format check and lint still pass.
+  - `ctest --preset core-asan --show-only=json-v1` lists `ASAN_OPTIONS` and `UBSAN_OPTIONS` in the tests' environment.
+  - Seeded errors, each in a throwaway test case that is not committed to the branch: a heap buffer overflow (read one past a `std::vector`'s end through `data()`) and a signed `int` overflow each make `cmake --workflow --preset core-asan` exit non-zero, with an `AddressSanitizer` or `runtime error` report in the output, while `scripts/test.sh` passes with the same seeds.
+  - CI: the pull request's run shows the `sanitizers` job on `ubuntu-24.04`, its log shows GCC 13.3 (`The CXX compiler identification is GNU 13.3`), and it passes. On a draft pull request that is closed unmerged afterwards, the job fails for each seed above and for the PR #37 pattern (range-for over `.items()` of a temporary `nlohmann::ordered_json`), which shows as a `heap-use-after-free` under GCC 13; the implementer links those runs in the task's pull request.
+  - `actionlint .github/workflows/ci.yml`, if installed; otherwise report it as not run.
+- **Depends on:** T1.1. Shares no files with the other open tasks; **parallel** with all of them.
+
 ### Phase 2: Core library (game-independent, `modules/stats/core/`)
 
 All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expected values come from the PRD formulas and the [curves](../PRD.md#41-curves), computed by hand in the test.
@@ -778,6 +802,7 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
 - Sequential path: T1.1, then C4 and C1 and C2, then C3, C5, C5a, C6, C7, C8, C7a, G1, G2, G3, G5, U1, A1, A2, A3, K1, V1.
 - Parallel tracks:
   - T1.2 and the spikes S1 to S8 run alongside Phase 2. S8 waits on the Wine Mono user action.
+  - T1.3 (sanitizer CI) touches only the presets, the workflow, `CONTRIBUTING.md` and the README, and runs at any time.
   - C1, C2 and C4 run in parallel. C9 runs in parallel with C8 and C7a; C8 and C7a share the service files, so they run one after the other, in either order.
   - The stat box amendments of PR #31: C9a only adds files and runs at any time. C3a runs in parallel with C8, C7a and C9a. C9b follows C3a, C9a and the merge of C8 (`stat_value.h`), and runs in parallel with C7a. C3b (PR #33) runs at any time. C9c follows C9b and C3b. U1 needs C9c, A1 needs C9b.
   - G6, G7, G8, G9a to G9c and G10a to G10c run in parallel once their spike and G1 or G3 are done.
@@ -790,6 +815,12 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
   - the CommonLibSSE-NG pinned by `lib/skyrim-mod-toolchain` names 1.7.104 as its latest AE runtime (`RUNTIME_SSE_LATEST_AE` in `SKSE/Version.h`), and its `REL::IDDB` reads format-5 files from `versionlib-<version>.bin`.
 
   Checked in game on 2026-11-23 with the skyrim-mcp bridge (run in `qasmoke`): SKSE reports the plugin as loaded correctly on 1.7.104.0, and its log has the version line and `kPostLoad`, `kPostPostLoad`, `kInputLoaded`, `kDataLoaded`, then `kSaveGame`, `kPreLoadGame` and `kPostLoadGame` for a console save and load. `kNewGame` was not exercised, since `coc` from the main menu does not start a new game.
+- **Sanitizer job (T1.3):**
+  - CI time: the job repeats the toolchain setup action, which installs the whole cross toolchain (clang, Wine, llvm-mingw, xwin, sysroot) although the job needs only the native compiler and vcpkg. It runs alongside `checks`, so it adds runner minutes, not wall time, as long as it finishes first. A native-only mode of the setup action would cut this; the action belongs to `lib/skyrim-mod-toolchain`, so that change goes there, not into this plan.
+  - The setup action's vcpkg cache key ends in the run ID, so both jobs of one run try to save the same key; the second save is rejected with a warning, not an error. Catch2 comes from that cache for the same `x64-linux` triplet and is not instrumented, which ASan and UBSan allow; errors inside Catch2 itself are not caught.
+  - `catch_discover_tests` runs the instrumented test binary at build time; a sanitizer error during static initialization fails the build step instead of a test.
+  - The sanitizers find only errors the tests execute. The PR #37 pattern shows only under a compiler without P2718R0 (GCC 13 in CI), so a local run with GCC 15 can pass where CI fails.
+  - Open, for the user: whether the local checks of [CONTRIBUTING.md#workflow](../../CONTRIBUTING.md#workflow) step 3 should include the sanitizer run. T1.3 leaves step 3 as it is and adds the command to the README only.
 - **Cross build:** CommonLibSSE-NG and the vcpkg ports must build with clang-cl and lld-link against xwin. Port build scripts that assume MSVC can fail. T1.1 showed that the CommonLibSSE-NG custom ports cover this (the directxtk shaders need Wine and llvm-mingw); for a new failing dependency the fallback is to vendor it as a submodule.
 - **Papyrus under Wine (S8):** this is blocked until Wine Mono or .NET is installed in the prefix. If the compiler still fails, A2 is blocked; fallback: revisit D5 (Caprica).
 - **S1 fails:** if the LevelUp menu cannot be suppressed cleanly, ST-19 and success criterion 1 need the revert fallback, or a PRD change. This is the highest-risk spike, so run it first. Resolved: suppression works with Experience ([S1 result](#s1-result)). What is left: 1.6.x, level-up menu mods and the game without Experience are untested (the hook has no 1.7.x-only offset). `setlevel`-style level changes are settled by ST-18: they are not level-ups, and G5 counts only the hook path.
