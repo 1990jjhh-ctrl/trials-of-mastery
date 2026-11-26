@@ -25,7 +25,8 @@ Titles follow [Conventional Commits](https://www.conventionalcommits.org): `<typ
 - `scripts/test.sh`, the native unit tests of the `core` preset;
 - `lib/skyrim-mod-toolchain/scripts/format.sh --check modules`;
 - `lib/skyrim-mod-toolchain/scripts/lint.sh build/core modules`;
-- `scripts/build.sh`, the cross build of the plugin DLLs (`plugin` preset) and the runtime-import check.
+- `scripts/build.sh`, the cross build of the plugin DLLs (`plugin` preset) and the runtime-import check;
+- in a separate job, `cmake --workflow --preset core-asan`, the native unit tests under AddressSanitizer and UndefinedBehaviorSanitizer (not part of step 3).
 
 The toolchain is set up by the action in `lib/skyrim-mod-toolchain` ([README.md#setup](README.md#setup)). Nothing in the game is covered, so run the in-game checks a task names yourself.
 
