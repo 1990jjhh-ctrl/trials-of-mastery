@@ -71,9 +71,10 @@ const std::vector<Button> kCoreStatButtons{ { "Strength (STR) 10" }, { "Dexterit
 	{ "Constitution (CON) 10" }, { "Intelligence (INT) 10" }, { "Wisdom (WIS) 10" }, { "Perception (PER) 10" },
 	{ "Endurance (END) 10" }, { "Charisma (CHA) 10" } };
 
+// "Back", then the buttons (Stats plan, assumption 17).
 std::vector<Button> withBack(std::vector<Button> buttons)
 {
-	buttons.push_back(Button{ "Back" });
+	buttons.insert(buttons.begin(), Button{ "Back" });
 	return buttons;
 }
 
@@ -380,8 +381,8 @@ TEST_CASE("a section provider fills the section of its namespace's group", "[sta
 		StatBoxModel box = fixture.box();
 		REQUIRE(calls == 1);
 
-		REQUIRE(nextPage(box.press(0)).buttons.back() == Button{ "Back" });
-		CHECK(nextPage(box.press(9)).text == withSection("Luck\nLockpicking +1 %\nPickpocket +2 %"));
+		REQUIRE(nextPage(box.press(0)).buttons.front() == Button{ "Back" });
+		CHECK(nextPage(box.press(0)).text == withSection("Luck\nLockpicking +1 %\nPickpocket +2 %"));
 		CHECK(box.page().text == withSection("Luck\nLockpicking +1 %\nPickpocket +2 %"));
 		CHECK(calls == 1);
 
@@ -393,7 +394,7 @@ TEST_CASE("a section provider fills the section of its namespace's group", "[sta
 	{
 		StatBoxModel box = fixture.box();
 
-		CHECK(nextPage(box.press(0)).buttons[8] == Button{ "Luck (LUC) 7" });
+		CHECK(nextPage(box.press(0)).buttons[9] == Button{ "Luck (LUC) 7" });
 	}
 
 	SECTION("a provider that removes itself does no harm")
@@ -464,19 +465,19 @@ TEST_CASE("Level Up assigns one point per press until none is pending", "[stat_b
 
 	CHECK(nextPage(box.press(0)) == Page{ "Free points: 3", withBack(kCoreStatButtons) });
 
-	const PressResult first = box.press(2);  // CON
+	const PressResult first = box.press(3);  // CON
 	CHECK_FALSE(first.error);
 	CHECK(first.deltas == std::vector<AvDelta>{ { .actorValue = "Health", .delta = above(kHealthCurve, 1.0) } });
 	auto buttons = kCoreStatButtons;
 	buttons[2] = Button{ "Constitution (CON) 11" };
 	CHECK(nextPage(first) == Page{ "Free points: 2", withBack(buttons) });
 
-	REQUIRE_FALSE(box.press(0).error);  // STR
+	REQUIRE_FALSE(box.press(1).error);  // STR
 	buttons[0] = Button{ "Strength (STR) 11" };
 	CHECK(box.page() == Page{ "Free points: 1", withBack(buttons) });
 
 	// The last point leads back to the first page, which now closes with OK.
-	const Page last = nextPage(box.press(0));
+	const Page last = nextPage(box.press(1));
 	CHECK(last.buttons == std::vector<Button>{ { "OK" } });
 	CHECK(last.text.starts_with("Warrior\nStrength (STR) 12 (0 / 100 XP)\nConstitution (CON) 11 (0 / 100 XP)\n"));
 	CHECK(fixture.stats.pendingPoints() == 0);
@@ -494,7 +495,7 @@ TEST_CASE("Back leaves the Level Up page with the points still pending", "[stat_
 	StatBoxModel box = fixture.box();
 	REQUIRE(std::holds_alternative<Page>(box.press(0).next));
 
-	CHECK(nextPage(box.press(kCoreStatButtons.size())) == Page{ kDefaultStatsText, { { "Level Up" }, { "Cancel" } } });
+	CHECK(nextPage(box.press(0)) == Page{ kDefaultStatsText, { { "Level Up" }, { "Cancel" } } });
 	CHECK(fixture.stats.pendingPoints() == 3);
 }
 
@@ -583,7 +584,7 @@ struct GroupedBox : Fixture
 	[[nodiscard]] StatBoxModel groupedBox() { return box(8); }
 };
 
-const Page kGroupsPage{ "Free points: 3", { { "Warrior" }, { "Mage" }, { "Thief" }, { "Other" }, { "Back" } } };
+const Page kGroupsPage{ "Free points: 3", { { "Back" }, { "Warrior" }, { "Mage" }, { "Thief" }, { "Other" } } };
 }
 
 TEST_CASE("stats and Back that fit in one box need no group pages", "[stat_box][groups]")
@@ -604,27 +605,27 @@ TEST_CASE("stats and Back that do not fit show one button per group", "[stat_box
 	SECTION("a group shows its stats and assigns points until Back")
 	{
 		const Page warrior{ "Warrior\nFree points: 3",
-			{ { "Strength (STR) 10" }, { "Constitution (CON) 10" }, { "Endurance (END) 10" }, { "Back" } } };
-		CHECK(nextPage(box.press(0)) == warrior);
+			{ { "Back" }, { "Strength (STR) 10" }, { "Constitution (CON) 10" }, { "Endurance (END) 10" } } };
+		CHECK(nextPage(box.press(1)) == warrior);
 
-		const PressResult assigned = box.press(1);  // CON
+		const PressResult assigned = box.press(2);  // CON
 		CHECK(assigned.deltas == std::vector<AvDelta>{ { .actorValue = "Health", .delta = above(kHealthCurve, 1.0) } });
 		CHECK(nextPage(assigned) == Page{ "Warrior\nFree points: 2",
-										{ { "Strength (STR) 10" }, { "Constitution (CON) 11" }, { "Endurance (END) 10" },
-											{ "Back" } } });
+										{ { "Back" }, { "Strength (STR) 10" }, { "Constitution (CON) 11" },
+											{ "Endurance (END) 10" } } });
 
 		// Back goes to the groups, and from there to the first page.
-		CHECK(nextPage(box.press(3)) == Page{ "Free points: 2", kGroupsPage.buttons });
-		CHECK(nextPage(box.press(4)).buttons == std::vector<Button>{ { "Level Up" }, { "Cancel" } });
+		CHECK(nextPage(box.press(0)) == Page{ "Free points: 2", kGroupsPage.buttons });
+		CHECK(nextPage(box.press(0)).buttons == std::vector<Button>{ { "Level Up" }, { "Cancel" } });
 		CHECK(fixture.stats.pendingPoints() == 2);
 	}
 
 	SECTION("the last point in a group leads back to the first page")
 	{
-		REQUIRE(std::holds_alternative<Page>(box.press(1).next));  // Mage
-		REQUIRE_FALSE(box.press(0).error);
-		REQUIRE_FALSE(box.press(0).error);
-		const Page last = nextPage(box.press(1));  // WIS
+		REQUIRE(std::holds_alternative<Page>(box.press(2).next));  // Mage
+		REQUIRE_FALSE(box.press(1).error);
+		REQUIRE_FALSE(box.press(1).error);
+		const Page last = nextPage(box.press(2));  // WIS
 
 		CHECK(last.buttons == std::vector<Button>{ { "OK" } });
 		CHECK(fixture.stats.read(kPlayer, StatId{ "INT" })->accumulated == 2);
@@ -642,8 +643,8 @@ TEST_CASE("registered stats on the group pages", "[stat_box][groups]")
 		StatBoxModel box = fixture.groupedBox();
 
 		CHECK(nextPage(box.press(0)).buttons ==
-			  std::vector<Button>{ { "Warrior" }, { "Mage" }, { "Thief" }, { "Mod" }, { "Other" }, { "Back" } });
-		CHECK(nextPage(box.press(3)) == Page{ "Mod\nFree points: 3", { { "Luck 5" }, { "Back" } } });
+			  std::vector<Button>{ { "Back" }, { "Warrior" }, { "Mage" }, { "Thief" }, { "Mod" }, { "Other" } });
+		CHECK(nextPage(box.press(4)) == Page{ "Mod\nFree points: 3", { { "Back" }, { "Luck 5" } } });
 	}
 
 	SECTION("a registered stat joins the group it names")
@@ -652,8 +653,9 @@ TEST_CASE("registered stats on the group pages", "[stat_box][groups]")
 		StatBoxModel box = fixture.groupedBox();
 		REQUIRE(nextPage(box.press(0)) == kGroupsPage);
 
-		CHECK(nextPage(box.press(0)).buttons == std::vector<Button>{ { "Strength (STR) 10" }, { "Constitution (CON) 10" },
-													{ "Endurance (END) 10" }, { "Might (MGT) 7" }, { "Back" } });
+		CHECK(nextPage(box.press(1)).buttons == std::vector<Button>{ { "Back" }, { "Strength (STR) 10" },
+													{ "Constitution (CON) 10" }, { "Endurance (END) 10" },
+													{ "Might (MGT) 7" } });
 	}
 
 	SECTION("the group buttons follow the section order")
@@ -663,7 +665,7 @@ TEST_CASE("registered stats on the group pages", "[stat_box][groups]")
 		StatBoxModel box = fixture.groupedBox();
 
 		CHECK(nextPage(box.press(0)).buttons ==
-			  std::vector<Button>{ { "Warrior" }, { "Mage" }, { "Thief" }, { "B" }, { "A" }, { "Other" }, { "Back" } });
+			  std::vector<Button>{ { "Back" }, { "Warrior" }, { "Mage" }, { "Thief" }, { "B" }, { "A" }, { "Other" } });
 	}
 
 	SECTION("a group whose only stat is opted out of free points is not shown")

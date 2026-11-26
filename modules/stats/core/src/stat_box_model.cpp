@@ -179,12 +179,12 @@ StatBoxModel::View StatBoxModel::groupsView(std::string text, const std::vector<
 {
 	View result;
 	result.page.text = std::move(text);
+	result.page.buttons.push_back(Button{ std::string(kBack) });
+	result.actions.emplace_back(Open{ .screen = Screen::Stats, .group = {} });
 	for (std::string& group : groupsOf(stats)) {
 		result.page.buttons.push_back(Button{ group });
 		result.actions.emplace_back(Open{ .screen = Screen::Group, .group = std::move(group) });
 	}
-	result.page.buttons.push_back(Button{ std::string(kBack) });
-	result.actions.emplace_back(Open{ .screen = Screen::Stats, .group = {} });
 	return result;
 }
 
@@ -200,12 +200,12 @@ StatBoxModel::View StatBoxModel::statsButtons(std::string text, std::vector<Stat
 {
 	View result;
 	result.page.text = std::move(text);
+	result.page.buttons.push_back(Button{ std::string(kBack) });
+	result.actions.emplace_back(std::move(back));
 	for (StatId& stat : stats) {
 		result.page.buttons.push_back(Button{ statButton(stat) });
 		result.actions.emplace_back(Assign{ std::move(stat) });
 	}
-	result.page.buttons.push_back(Button{ std::string(kBack) });
-	result.actions.emplace_back(std::move(back));
 	return result;
 }
 

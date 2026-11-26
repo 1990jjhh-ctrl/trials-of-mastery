@@ -74,10 +74,10 @@ struct StatBoxLayout
 // has claimed point assignment (ST-21, ST-22). "Cancel" closes the box and
 // leaves the points pending. "Level Up" shows the pending points and one
 // button per stat that takes free points (ST-2) with its label and effective
-// value, plus "Back"; each stat button assigns one point, and the last point
-// leads back to the first page. When those stats and "Back" need more buttons
-// than one box has, "Level Up" shows one button per group instead, and each
-// group shows its stats (ST-21).
+// value, after "Back" (Stats plan, assumption 17); each stat button assigns
+// one point, and the last point leads back to the first page. When those
+// stats and "Back" need more buttons than one box has, "Level Up" shows one
+// button per group instead, and each group shows its stats (ST-21).
 //
 // Groups come in the order of ST-21: the groups the stats files name except
 // Other, then the other groups in the order of their first active stat, so
@@ -143,7 +143,7 @@ private:
 	[[nodiscard]] View levelUpView() const;
 	[[nodiscard]] View groupsView(std::string text, const std::vector<StatId>& stats) const;
 	[[nodiscard]] View groupView() const;
-	// One button per stat, which assigns it a point, then "Back".
+	// "Back", then one button per stat, which assigns it a point.
 	[[nodiscard]] View statsButtons(std::string text, std::vector<StatId> stats, Open back) const;
 
 	// The active stats that take free points (ST-2).
