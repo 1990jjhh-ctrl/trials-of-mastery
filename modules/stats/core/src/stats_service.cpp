@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <format>
+#include <map>
 #include <string>
 #include <utility>
 
@@ -72,6 +73,50 @@ StatAdvancedEvent StatsService::advanceStat(ActorId actor, ActorState& state, co
 	const std::int32_t points = value.active;
 	tom::stats::advance(value);
 	return StatAdvancedEvent{ .actor = actor, .stat = stat, .points = points };
+}
+
+std::vector<AvDelta> StatsService::train(ActorState& player, const std::vector<StatXp>& gains)
+{
+	struct Gain
+	{
+		const StatXp* xp = nullptr;
+		std::int32_t  points = 0;
+	};
+	std::vector<Gain> applied;
+	applied.reserve(gains.size());
+	for (const auto& gain : gains) {
+		if (!std::isfinite(gain.xp) || gain.xp <= 0.0 || !checkActive(gain.stat)) {
+			continue;
+		}
+		const GainResult result = tom::stats::addXp(player.stats.values[gain.stat], gain.xp, r_);
+		applied.push_back(Gain{ .xp = &gain, .points = result.points });
+	}
+	auto deltas = updateEffects(player);
+
+	// A receiver may change the service, so the events use player no more.
+	for (const auto& [xp, points] : applied) {
+		notify(&EventSink::xpGained, XpGainedEvent{ .actor = player_, .stat = xp->stat, .xp = xp->xp });
+		if (points > 0) {
+			notify(&EventSink::pointGained, PointGainedEvent{ .actor = player_, .stat = xp->stat, .points = points, .source = PointSource::Xp });
+		}
+	}
+	return deltas;
+}
+
+ActorStats StatsService::withoutInactiveStats(ActorStats stats) const
+{
+	const auto inactive = [this](const auto& entry) { return !checkActive(entry.first); };
+	std::erase_if(stats.values, inactive);
+	std::erase_if(stats.modifiers, inactive);
+	return stats;
+}
+
+std::unexpected<Error> StatsService::missingCheck(const std::string& action) const
+{
+	if (!tables_.actions.contains(action)) {
+		return rejected(std::format("unknown action '{}'", action));
+	}
+	return rejected(std::format("action '{}' has no check", action));
 }
 
 template <typename Event>
@@ -235,15 +280,7 @@ std::expected<std::vector<AvDelta>, Error> StatsService::addXp(ActorId actor, co
 	if (!std::isfinite(xp) || xp <= 0.0) {
 		return rejected(std::format("XP {} for stat '{}' is not positive and finite", xp, stat.name));
 	}
-	return findStat(actor, stat).transform([&](ActorState* state) {
-		const GainResult gain = tom::stats::addXp(state->stats.values[stat], xp, r_);
-		auto             deltas = updateEffects(*state);
-		notify(&EventSink::xpGained, XpGainedEvent{ .actor = actor, .stat = stat, .xp = xp });
-		if (gain.points > 0) {
-			notify(&EventSink::pointGained, PointGainedEvent{ .actor = actor, .stat = stat, .points = gain.points, .source = PointSource::Xp });
-		}
-		return deltas;
-	});
+	return findStat(actor, stat).transform([&](ActorState* state) { return train(*state, { StatXp{ .stat = stat, .xp = xp } }); });
 }
 
 std::expected<std::vector<AvDelta>, Error> StatsService::setValues(ActorId actor, const StatId& stat, const StatValue& value)
@@ -451,6 +488,63 @@ std::expected<double, Error> StatsService::critChance(ActorId actor, CritKind ki
 	return findActor(actor).transform([&](const ActorState* state) {
 		return tom::stats::critChance(state->stats, activeTable_, *shifts, kind);
 	});
+}
+
+std::expected<std::vector<AvDelta>, Error> StatsService::trainSkillLevelUp(const std::string& skill, std::int32_t levelReached)
+{
+	return findActor(player_).transform([&](ActorState* state) {
+		return train(*state, skillLevelUpXp(tables_.skills, xpModifiers_, skill, levelReached));
+	});
+}
+
+std::expected<std::vector<AvDelta>, Error> StatsService::applyTraining(const std::string& action, double input)
+{
+	if (!tables_.actions.contains(action)) {
+		return rejected(std::format("unknown action '{}'", action));
+	}
+	return findActor(player_).transform([&](ActorState* state) {
+		return train(*state, actionTrainingXp(tables_.actions, xpModifiers_, action, input));
+	});
+}
+
+std::expected<double, Error> StatsService::checkValue(ActorId actor, const std::string& action, const SkillLevels& skillLevels) const
+{
+	if (!skillLevels) {
+		return rejected(std::format("no skill levels for the check of action '{}'", action));
+	}
+	const auto state = findActor(actor);
+	if (!state) {
+		return std::unexpected(state.error());
+	}
+	const auto value = tom::stats::checkValue(tables_.actions, action, withoutInactiveStats((*state)->stats), skillLevels);
+	if (!value) {
+		return missingCheck(action);
+	}
+	return *value;
+}
+
+std::expected<double, Error> StatsService::checkResult(const std::string& action, double i) const
+{
+	const auto result = tom::stats::checkResult(tables_.actions, action, i);
+	if (!result) {
+		return missingCheck(action);
+	}
+	return *result;
+}
+
+bool StatsService::setXpModifier(const XpModifierOwner& owner, XpModifierKind kind, const std::string& name, double m)
+{
+	return xpModifiers_.set(owner, kind, name, m);
+}
+
+void StatsService::removeXpModifier(const XpModifierOwner& owner, XpModifierKind kind, const std::string& name)
+{
+	xpModifiers_.remove(owner, kind, name);
+}
+
+double StatsService::skillXpFactor(std::string_view skill) const
+{
+	return xpModifiers_.factor(XpModifierKind::SkillXp, skill);
 }
 
 std::int32_t StatsService::defaultBase(const StatId& stat) const

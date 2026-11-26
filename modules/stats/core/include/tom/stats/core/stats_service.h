@@ -5,12 +5,15 @@
 // calls nothing in the game.
 
 #include "tom/stats/core/actor_stats.h"
+#include "tom/stats/core/check.h"
 #include "tom/stats/core/config/settings.h"
 #include "tom/stats/core/config/tables.h"
 #include "tom/stats/core/effects.h"
 #include "tom/stats/core/error.h"
 #include "tom/stats/core/stat_registry.h"
 #include "tom/stats/core/stat_value.h"
+#include "tom/stats/core/training.h"
+#include "tom/stats/core/xp_modifiers.h"
 
 #include <cstdint>
 #include <expected>
@@ -202,8 +205,8 @@ public:
 	// Forgets what a save holds, for a revert on a new game or a load: the
 	// actors, the pending points and the dormant stats; r goes back to the
 	// value the service was built with. The session state stays (Stats plan,
-	// assumption 16): N, the claims, the active stats, the crit shifts and
-	// the event sink.
+	// assumption 16): N, the claims, the active stats, the crit shifts, the
+	// XP modifiers and the event sink.
 	void resetSaveState();
 
 	[[nodiscard]] bool hasActor(ActorId actor) const;
@@ -323,6 +326,48 @@ public:
 	// an unknown actor.
 	[[nodiscard]] std::expected<double, Error> critChance(ActorId actor, CritKind kind) const;
 
+	// Trains the player's stats for a skill reaching levelReached
+	// (ST-14, ST-16): addXp() of skillLevelUpXp() with the service's tables
+	// and XP modifiers, with the events of addXp(). An unmapped skill gives
+	// no XP and no error. Amounts that addXp() would refuse (not positive or
+	// not finite) and stats that are not active are left out, also without
+	// an error. Fails for an unknown player.
+	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> trainSkillLevelUp(const std::string& skill, std::int32_t levelReached);
+
+	// Trains the player's stats for the action with its input, e.g. the
+	// weapon weight or the money value (ST-15, ST-16): addXp() of
+	// actionTrainingXp() with the service's tables and XP modifiers, with
+	// the events of addXp(). Leaves out amounts and stats as
+	// trainSkillLevelUp() does. Fails, and changes nothing, for an action
+	// the actions table does not have and for an unknown player.
+	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> applyTraining(const std::string& action, double input);
+
+	// The check value I of the action for the actor (ST-15, ST-16), as
+	// tom::stats::checkValue() gives it for the actor's stats and the skill
+	// levels. Only the active stats count: a stat that is not active counts
+	// as one the actor does not have (Stats plan, assumption 8). Fails for an
+	// unknown actor, an action the actions table does not have, an action
+	// without a check and an empty skillLevels.
+	[[nodiscard]] std::expected<double, Error> checkValue(ActorId actor, const std::string& action, const SkillLevels& skillLevels) const;
+
+	// The game quantity the action's check gives for I = i, e.g. the
+	// lockpicking sweet spot (Stats plan, assumption 7). Fails for an action
+	// the actions table does not have and for an action without a check.
+	[[nodiscard]] std::expected<double, Error> checkResult(const std::string& action, double i) const;
+
+	// Sets or replaces, or removes, the owner's XP modifier for the skill or
+	// action (ST-17), as XpModifierRegistry::set() and remove() do.
+	// setXpModifier returns false, and changes nothing, for what set()
+	// rejects: an empty owner or name, or m below -1 or not finite.
+	[[nodiscard]] bool setXpModifier(const XpModifierOwner& owner, XpModifierKind kind, const std::string& name,
+		double m);
+	void               removeXpModifier(const XpModifierOwner& owner, XpModifierKind kind, const std::string& name);
+
+	// The factor of the XP modifiers on the skill's own XP (ST-17), 1 without
+	// any. The game layer multiplies it with learningBonus() and the game's
+	// own bonuses (ST-12).
+	[[nodiscard]] double skillXpFactor(std::string_view skill) const;
+
 private:
 	struct ActorState
 	{
@@ -356,6 +401,20 @@ private:
 	// Advances the stat and returns the event to send.
 	[[nodiscard]] static StatAdvancedEvent advanceStat(ActorId actor, ActorState& state, const StatId& stat);
 
+	// Adds each amount to the player's stat and buys the points it pays for
+	// at r (ST-5), leaving out amounts that are not positive and finite and
+	// stats that are not active. Then sends XP gained and point gained for
+	// each amount, after all of them are added, so a receiver may call the
+	// service. Returns the AvDeltas of the whole change.
+	[[nodiscard]] std::vector<AvDelta> train(ActorState& player, const std::vector<StatXp>& gains);
+
+	// The stats without the values and modifiers of the stats that are not
+	// active, which effective() then counts as missing.
+	[[nodiscard]] ActorStats withoutInactiveStats(ActorStats stats) const;
+
+	// Why the action has no check: it is unknown, or it has none.
+	[[nodiscard]] std::unexpected<Error> missingCheck(const std::string& action) const;
+
 	// Sends the event, if there is a receiver.
 	template <typename Event>
 	void notify(void (EventSink::*handler)(const Event&), const Event& event) const;
@@ -379,6 +438,7 @@ private:
 	std::set<std::string>         pointAssignmentOwners_;
 	std::int32_t                  pendingPoints_ = 0;
 	EventSink*                    events_ = nullptr;
+	XpModifierRegistry            xpModifiers_;
 	// Replaced, never changed, so a running critChance() keeps its own.
 	std::shared_ptr<const CritShiftRegistry> critShifts_ = std::make_shared<const CritShiftRegistry>();
 };
