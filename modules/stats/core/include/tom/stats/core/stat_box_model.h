@@ -4,12 +4,14 @@
 // Stats plan, C9). It has no UI: the game layer shows each Page as a message
 // box and passes the index of the pressed button to press().
 
+#include "tom/stats/core/config/tables.h"
 #include "tom/stats/core/effects.h"
 #include "tom/stats/core/error.h"
 #include "tom/stats/core/stat_registry.h"
 #include "tom/stats/core/stats_service.h"
 
 #include <cstddef>
+#include <map>
 #include <optional>
 #include <string>
 #include <variant>
@@ -60,12 +62,17 @@ struct PressResult
 // pending. "Level Up" shows the pending points and one button per stat that
 // takes free points (ST-2) with its effective value, plus "Back"; each stat
 // button assigns one point, until none is pending, which leads back to the
-// first page.
+// first page. When those stats and "Back" need more buttons than one box has,
+// "Level Up" shows one button per stat group instead, ordered by their first
+// stat with Other last, and each group shows its stats (ST-21).
 class StatBoxModel
 {
 public:
-	// The service must outlive the model.
-	explicit StatBoxModel(StatsService& service);
+	// The service must outlive the model. stats is the stats table the
+	// service was built from, for the group of each stat (ST-21); a stat
+	// without an entry is in Other. maxButtons is the most buttons one
+	// message box can show.
+	StatBoxModel(StatsService& service, const StatsTable& stats, std::size_t maxButtons);
 
 	// The page to show now.
 	[[nodiscard]] Page page() const;
@@ -77,14 +84,16 @@ private:
 	enum class Screen
 	{
 		Stats,    // the first page
-		LevelUp,  // the stats to assign a free point to
+		LevelUp,  // the stats to assign a free point to, or their groups
+		Group,    // the stats of one group
 	};
 
 	struct Close
 	{};
 	struct Open
 	{
-		Screen screen;
+		Screen      screen;
+		std::string group;  // for Screen::Group
 	};
 	struct Assign
 	{
@@ -106,6 +115,10 @@ private:
 	[[nodiscard]] View view() const;
 	[[nodiscard]] View statsView() const;
 	[[nodiscard]] View levelUpView() const;
+	[[nodiscard]] View groupsView(std::string text, const std::vector<StatId>& stats) const;
+	[[nodiscard]] View groupView() const;
+	// One button per stat, which assigns it a point, then "Back".
+	[[nodiscard]] View statsButtons(std::string text, std::vector<StatId> stats, Open back) const;
 
 	// The active stats that take free points (ST-2).
 	[[nodiscard]] std::vector<StatId> assignableStats() const;
@@ -114,8 +127,15 @@ private:
 	// has no value to read.
 	[[nodiscard]] std::string statLabel(const StatId& stat) const;
 
-	StatsService& service_;
-	Screen        screen_ = Screen::Stats;
+	[[nodiscard]] const std::string& groupOf(const StatId& stat) const;
+	// The groups of the stats, each once.
+	[[nodiscard]] std::vector<std::string> groupsOf(const std::vector<StatId>& stats) const;
+
+	StatsService&                 service_;
+	std::map<StatId, std::string> groups_;
+	std::size_t                   maxButtons_;
+	Screen                        screen_ = Screen::Stats;
+	std::string                   group_;  // the group of Screen::Group
 };
 
 }

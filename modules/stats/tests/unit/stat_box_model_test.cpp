@@ -3,13 +3,18 @@
 
 #include "stats_service_fixture.h"
 
+#include "tom/stats/core/config/settings.h"
+#include "tom/stats/core/config/tables.h"
 #include "tom/stats/core/effects.h"
 #include "tom/stats/core/stat_registry.h"
 #include "tom/stats/core/stats_service.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstddef>
+#include <initializer_list>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -21,6 +26,7 @@ using tom::stats::Page;
 using tom::stats::PressResult;
 using tom::stats::StatBoxModel;
 using tom::stats::StatsService;
+using tom::stats::Tables;
 
 using namespace service_test;
 
@@ -46,11 +52,20 @@ std::vector<Button> withBack(std::vector<Button> buttons)
 	return buttons;
 }
 
+// Room for every stat button and "Back", so the box needs no group pages.
+constexpr std::size_t kRoomForAll = 10;
+
 StatsService serviceWithPlayer()
 {
 	StatsService stats = service();
 	REQUIRE(stats.addActor(kPlayer, "ImperialRace"));
 	return stats;
+}
+
+// A box over a service built from the fixture's tables.
+StatBoxModel boxFor(StatsService& stats, std::size_t maxButtons = kRoomForAll)
+{
+	return StatBoxModel(stats, tables().stats, maxButtons);
 }
 
 // The page the press leads to; fails the test if the press closed the box.
@@ -71,7 +86,7 @@ TEST_CASE("without pending points the box lists the stats and closes with OK", "
 	StatsService stats = serviceWithPlayer();
 	REQUIRE(stats.addXp(kPlayer, kStr, 140.0));
 	REQUIRE(stats.setMultiplier(kPlayer, 1.5));
-	StatBoxModel box(stats);
+	StatBoxModel box = boxFor(stats);
 
 	const Page page = box.page();
 
@@ -92,7 +107,7 @@ TEST_CASE("pending points offer Level Up and Cancel, and Cancel keeps them", "[s
 {
 	StatsService stats = serviceWithPlayer();
 	stats.onPlayerLevelUp(2);
-	StatBoxModel box(stats);
+	StatBoxModel box = boxFor(stats);
 
 	CHECK(box.page() == Page{ kDefaultStatsText, { { "Level Up" }, { "Cancel" } } });
 	CHECK(closes(box.press(1)));
@@ -103,7 +118,7 @@ TEST_CASE("Level Up assigns one point per press until none is pending", "[stat_b
 {
 	StatsService stats = serviceWithPlayer();
 	stats.onPlayerLevelUp(2);
-	StatBoxModel box(stats);
+	StatBoxModel box = boxFor(stats);
 
 	CHECK(nextPage(box.press(0)) == Page{ "Free points: 3", withBack(kCoreStatButtons) });
 
@@ -130,7 +145,7 @@ TEST_CASE("Back leaves the Level Up page with the points still pending", "[stat_
 {
 	StatsService stats = serviceWithPlayer();
 	stats.onPlayerLevelUp(2);
-	StatBoxModel box(stats);
+	StatBoxModel box = boxFor(stats);
 	REQUIRE(std::holds_alternative<Page>(box.press(0).next));
 
 	CHECK(nextPage(box.press(kCoreStatButtons.size())) == Page{ kDefaultStatsText, { { "Level Up" }, { "Cancel" } } });
@@ -142,7 +157,7 @@ TEST_CASE("a point-assignment claim leaves only OK", "[stat_box]")
 	StatsService stats = serviceWithPlayer();
 	stats.onPlayerLevelUp(2);
 	REQUIRE(stats.claimPointAssignment("Mod:Professions"));
-	StatBoxModel box(stats);
+	StatBoxModel box = boxFor(stats);
 
 	CHECK(box.page() == Page{ kDefaultStatsText, { { "OK" } } });
 	CHECK(closes(box.press(0)));
@@ -157,7 +172,7 @@ TEST_CASE("a registered stat shows like a core stat unless it is opted out of fr
 	SECTION("a stat that takes free points is on both pages")
 	{
 		REQUIRE(stats.registerStat(kLuck));
-		StatBoxModel box(stats);
+		StatBoxModel box = boxFor(stats);
 
 		CHECK(box.page().text == kDefaultStatsText + "\nMod:Luck 5 (XP 0 / 100)");
 		auto buttons = kCoreStatButtons;
@@ -168,7 +183,7 @@ TEST_CASE("a registered stat shows like a core stat unless it is opted out of fr
 	SECTION("an opted-out stat is on the first page only")
 	{
 		REQUIRE(stats.registerStat(kLuck, FreePoints::OptedOut));
-		StatBoxModel box(stats);
+		StatBoxModel box = boxFor(stats);
 
 		CHECK(box.page().text == kDefaultStatsText + "\nMod:Luck 5 (XP 0 / 100)");
 		CHECK(nextPage(box.press(0)) == Page{ "Free points: 3", withBack(kCoreStatButtons) });
@@ -179,7 +194,7 @@ TEST_CASE("a button the page does not have changes nothing", "[stat_box]")
 {
 	StatsService stats = serviceWithPlayer();
 	stats.onPlayerLevelUp(2);
-	StatBoxModel box(stats);
+	StatBoxModel box = boxFor(stats);
 	const Page   before = box.page();
 
 	const PressResult result = box.press(2);
@@ -187,4 +202,135 @@ TEST_CASE("a button the page does not have changes nothing", "[stat_box]")
 	CHECK(result.error);
 	CHECK(nextPage(result) == before);
 	CHECK(stats.pendingPoints() == 3);
+}
+
+namespace
+{
+const StatId kMight{ "Mod:Might" };  // a registered stat in the Warrior group
+const StatId kFate{ "Mod:Fate" };    // a registered stat in a group of its own
+
+// The fixture's tables with the default groups of ST-27, Mod:Might in
+// Warrior, Mod:Fate in Mod:Fortune, and Mod:Luck in none.
+Tables groupedTables()
+{
+	Tables result = tables();
+	for (const auto* name : { "STR", "CON", "END" }) {
+		result.stats[StatId{ name }].group = "Warrior";
+	}
+	for (const auto* name : { "INT", "WIS" }) {
+		result.stats[StatId{ name }].group = "Mage";
+	}
+	for (const auto* name : { "DEX", "PER" }) {
+		result.stats[StatId{ name }].group = "Thief";
+	}
+	for (const auto& [stat, group] : { std::pair{ kMight, "Warrior" }, std::pair{ kFate, "Mod:Fortune" } }) {
+		auto& entry = result.stats[stat];
+		entry.group = group;
+		entry.defaultBase = 10;
+	}
+	return result;
+}
+
+// The player with pending points and a box with room for 8 buttons, so the
+// 8 core stats and "Back" need group pages.
+struct GroupedBox
+{
+	Tables       grouped = groupedTables();
+	StatsService stats{ tom::stats::Settings{}, grouped, kPlayer };
+
+	GroupedBox()
+	{
+		REQUIRE(stats.addActor(kPlayer, "ImperialRace"));
+		stats.onPlayerLevelUp(2);
+	}
+
+	[[nodiscard]] StatBoxModel box(std::size_t maxButtons = 8) { return StatBoxModel(stats, grouped.stats, maxButtons); }
+};
+
+const Page kGroupsPage{ "Free points: 3", { { "Warrior" }, { "Thief" }, { "Mage" }, { "Other" }, { "Back" } } };
+}
+
+TEST_CASE("stats and Back that fit in one box need no group pages", "[stat_box][groups]")
+{
+	GroupedBox   fixture;
+	StatBoxModel box = fixture.box(9);
+
+	CHECK(nextPage(box.press(0)) == Page{ "Free points: 3", withBack(kCoreStatButtons) });
+}
+
+TEST_CASE("stats and Back that do not fit show one button per group", "[stat_box][groups]")
+{
+	GroupedBox   fixture;
+	StatBoxModel box = fixture.box();
+
+	CHECK(nextPage(box.press(0)) == kGroupsPage);
+
+	SECTION("a group shows its stats and assigns points until Back")
+	{
+		const Page warrior{ "Warrior\nFree points: 3", { { "STR 10" }, { "CON 10" }, { "END 10" }, { "Back" } } };
+		CHECK(nextPage(box.press(0)) == warrior);
+
+		const PressResult assigned = box.press(1);  // CON
+		CHECK(assigned.deltas == std::vector<AvDelta>{ { .actorValue = "Health", .delta = above(kHealthCurve, 1.0) } });
+		CHECK(nextPage(assigned) == Page{ "Warrior\nFree points: 2", { { "STR 10" }, { "CON 11" }, { "END 10" }, { "Back" } } });
+
+		// Back goes to the groups, and from there to the first page.
+		CHECK(nextPage(box.press(3)) == Page{ "Free points: 2", kGroupsPage.buttons });
+		CHECK(nextPage(box.press(4)).buttons == std::vector<Button>{ { "Level Up" }, { "Cancel" } });
+		CHECK(fixture.stats.pendingPoints() == 2);
+	}
+
+	SECTION("the last point in a group leads back to the first page")
+	{
+		REQUIRE(std::holds_alternative<Page>(box.press(2).next));  // Mage
+		REQUIRE_FALSE(box.press(0).error);
+		REQUIRE_FALSE(box.press(0).error);
+		const Page last = nextPage(box.press(1));  // WIS
+
+		CHECK(last.buttons == std::vector<Button>{ { "OK" } });
+		CHECK(fixture.stats.read(kPlayer, StatId{ "INT" })->accumulated == 2);
+		CHECK(fixture.stats.read(kPlayer, StatId{ "WIS" })->accumulated == 1);
+	}
+}
+
+TEST_CASE("registered stats on the group pages", "[stat_box][groups]")
+{
+	GroupedBox fixture;
+
+	SECTION("a registered stat that names no group lands in Other")
+	{
+		REQUIRE(fixture.stats.registerStat(kLuck));
+		StatBoxModel box = fixture.box();
+		REQUIRE(nextPage(box.press(0)) == kGroupsPage);
+
+		CHECK(nextPage(box.press(3)) == Page{ "Other\nFree points: 3", { { "CHA 10" }, { "Mod:Luck 5" }, { "Back" } } });
+	}
+
+	SECTION("a registered stat joins the group it names")
+	{
+		REQUIRE(fixture.stats.registerStat(kMight));
+		StatBoxModel box = fixture.box();
+		REQUIRE(nextPage(box.press(0)) == kGroupsPage);
+
+		CHECK(nextPage(box.press(0)).buttons ==
+			  std::vector<Button>{ { "STR 10" }, { "CON 10" }, { "END 10" }, { "Mod:Might 10" }, { "Back" } });
+	}
+
+	SECTION("a new group comes before Other")
+	{
+		REQUIRE(fixture.stats.registerStat(kFate));
+		StatBoxModel box = fixture.box();
+
+		CHECK(nextPage(box.press(0)).buttons ==
+			  std::vector<Button>{ { "Warrior" }, { "Thief" }, { "Mage" }, { "Mod:Fortune" }, { "Other" }, { "Back" } });
+	}
+
+	SECTION("a group whose only stat is opted out of free points is not shown")
+	{
+		REQUIRE(fixture.stats.registerStat(kFate, FreePoints::OptedOut));
+		StatBoxModel box = fixture.box();
+
+		CHECK(box.page().text.ends_with("\nMod:Fate 10 (XP 0 / 100)"));
+		CHECK(nextPage(box.press(0)) == kGroupsPage);
+	}
 }

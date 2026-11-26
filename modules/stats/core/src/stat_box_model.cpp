@@ -1,7 +1,9 @@
 #include "tom/stats/core/stat_box_model.h"
 
+#include "tom/stats/core/config/tables.h"
 #include "tom/stats/core/stat_value.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <format>
@@ -36,9 +38,14 @@ constexpr std::string_view kBack = "Back";
 }
 }
 
-StatBoxModel::StatBoxModel(StatsService& service) :
-	service_(service)
-{}
+StatBoxModel::StatBoxModel(StatsService& service, const StatsTable& stats, std::size_t maxButtons) :
+	service_(service),
+	maxButtons_(maxButtons)
+{
+	for (const auto& [stat, entry] : stats) {
+		groups_.emplace(stat, entry.group);
+	}
+}
 
 Page StatBoxModel::page() const
 {
@@ -58,6 +65,7 @@ PressResult StatBoxModel::press(std::size_t button)
 	}
 	if (const auto* open = std::get_if<Open>(&action)) {
 		screen_ = open->screen;
+		group_ = open->group;
 		return PressResult{ .next = page(), .deltas = {}, .error = std::nullopt };
 	}
 	auto deltas = service_.assignFreePoint(std::get<Assign>(action).stat);
@@ -82,6 +90,8 @@ StatBoxModel::View StatBoxModel::view() const
 	switch (screen()) {
 	case Screen::LevelUp:
 		return levelUpView();
+	case Screen::Group:
+		return groupView();
 	case Screen::Stats:
 		break;
 	}
@@ -109,7 +119,7 @@ StatBoxModel::View StatBoxModel::statsView() const
 		return result;
 	}
 	result.page.buttons.push_back(Button{ std::string(kLevelUp) });
-	result.actions.emplace_back(Open{ Screen::LevelUp });
+	result.actions.emplace_back(Open{ .screen = Screen::LevelUp, .group = {} });
 	result.page.buttons.push_back(Button{ std::string(kCancel) });
 	result.actions.emplace_back(Close{});
 	return result;
@@ -117,14 +127,45 @@ StatBoxModel::View StatBoxModel::statsView() const
 
 StatBoxModel::View StatBoxModel::levelUpView() const
 {
+	std::vector<StatId> stats = assignableStats();
+	const std::string   text = freePointsText(service_.pendingPoints());
+	if (stats.size() + 1 > maxButtons_) {
+		return groupsView(text, stats);
+	}
+	return statsButtons(text, std::move(stats), Open{ .screen = Screen::Stats, .group = {} });
+}
+
+StatBoxModel::View StatBoxModel::groupsView(std::string text, const std::vector<StatId>& stats) const
+{
 	View result;
-	result.page.text = freePointsText(service_.pendingPoints());
-	for (StatId& stat : assignableStats()) {
+	result.page.text = std::move(text);
+	for (std::string& group : groupsOf(stats)) {
+		result.page.buttons.push_back(Button{ group });
+		result.actions.emplace_back(Open{ .screen = Screen::Group, .group = std::move(group) });
+	}
+	result.page.buttons.push_back(Button{ std::string(kBack) });
+	result.actions.emplace_back(Open{ .screen = Screen::Stats, .group = {} });
+	return result;
+}
+
+StatBoxModel::View StatBoxModel::groupView() const
+{
+	std::vector<StatId> stats = assignableStats();
+	std::erase_if(stats, [this](const StatId& stat) { return groupOf(stat) != group_; });
+	return statsButtons(std::format("{}\n{}", group_, freePointsText(service_.pendingPoints())), std::move(stats),
+		Open{ .screen = Screen::LevelUp, .group = {} });
+}
+
+StatBoxModel::View StatBoxModel::statsButtons(std::string text, std::vector<StatId> stats, Open back) const
+{
+	View result;
+	result.page.text = std::move(text);
+	for (StatId& stat : stats) {
 		result.page.buttons.push_back(Button{ statLabel(stat) });
 		result.actions.emplace_back(Assign{ std::move(stat) });
 	}
 	result.page.buttons.push_back(Button{ std::string(kBack) });
-	result.actions.emplace_back(Open{ Screen::Stats });
+	result.actions.emplace_back(std::move(back));
 	return result;
 }
 
@@ -142,6 +183,27 @@ std::string StatBoxModel::statLabel(const StatId& stat) const
 		return stat.name;
 	}
 	return std::format("{} {}", stat.name, formatNumber(reading->effective));
+}
+
+const std::string& StatBoxModel::groupOf(const StatId& stat) const
+{
+	static const std::string other(kOtherGroup);
+	const auto               it = groups_.find(stat);
+	return it == groups_.end() ? other : it->second;
+}
+
+std::vector<std::string> StatBoxModel::groupsOf(const std::vector<StatId>& stats) const
+{
+	std::vector<std::string> result;
+	for (const StatId& stat : stats) {
+		const std::string& group = groupOf(stat);
+		if (std::ranges::find(result, group) == result.end()) {
+			result.push_back(group);
+		}
+	}
+	// Other gathers what fits nowhere else, so it comes last.
+	std::ranges::stable_partition(result, [](const std::string& group) { return group != kOtherGroup; });
+	return result;
 }
 
 }
