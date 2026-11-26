@@ -21,6 +21,8 @@ Native unit tests only:
 ```sh
 scripts/test.sh
 scripts/test.sh -R "<test name>"   # single test
+cmake --workflow --preset core-asan        # under ASan and UBSan
+ctest --preset core-asan -R "<test name>"  # single test, after the line above
 ```
 
 `scripts/test.sh` runs the `core` preset (`cmake --preset core`, `cmake --build --preset core`, `ctest --preset core`); the cross build uses the `plugin` preset. Both are in [CMakePresets.json](CMakePresets.json).
