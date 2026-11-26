@@ -28,6 +28,9 @@ constexpr std::string_view kNext = "Next";
 
 // A group name and one line, so a page shows at least one line of a section.
 constexpr std::size_t kMinLinesPerPage = 2;
+// The most buttons an overview page needs: "Back", "Level Up", "Cancel" and
+// "Next". It leaves a paged list room for "Back", "Next" and two items.
+constexpr std::size_t kMinButtons = 4;
 
 // The stat box shows whole numbers (ST-24; Stats plan, assumption 17).
 [[nodiscard]] std::string valueText(double value)
@@ -182,7 +185,7 @@ StatBoxModel::StatBoxModel(StatsService& service, const Tables& tables, const St
 	StatBoxLayout layout) :
 	service_(service),
 	tables_(tables),
-	layout_{ .maxButtons = layout.maxButtons, .linesPerPage = std::max(layout.linesPerPage, kMinLinesPerPage) }
+	layout_{ .maxButtons = std::max(layout.maxButtons, kMinButtons), .linesPerPage = std::max(layout.linesPerPage, kMinLinesPerPage) }
 {
 	const std::vector<StatId>      stats = service_.registry().activeStats();
 	const std::vector<std::string> groups = groupsOf(stats);
@@ -217,11 +220,7 @@ PressResult StatBoxModel::press(std::size_t button)
 		return PressResult{ .next = Closed{}, .deltas = {}, .error = std::nullopt };
 	}
 	if (const auto* open = std::get_if<Open>(&action)) {
-		screen_ = open->screen;
-		group_ = open->group;
-		if (open->screen == Screen::Stats) {
-			overviewPage_ = open->page;
-		}
+		show(*open);
 		return PressResult{ .next = page(), .deltas = {}, .error = std::nullopt };
 	}
 	auto deltas = service_.assignFreePoint(std::get<Assign>(action).stat);
@@ -283,43 +282,64 @@ StatBoxModel::View StatBoxModel::statsView() const
 StatBoxModel::View StatBoxModel::levelUpView() const
 {
 	std::vector<StatId> stats = assignableStats();
-	const std::string   text = freePointsText(service_.pendingPoints());
 	if (stats.size() + 1 > layout_.maxButtons) {
-		return groupsView(text, stats);
+		return groupsView(stats);
 	}
-	return statsButtons(text, std::move(stats), Open{ .screen = Screen::Stats, .group = {}, .page = overviewPage_ });
+	return listView(statItems(std::move(stats)), Open{ .screen = Screen::Stats, .group = {}, .page = overviewPage_ },
+		kLevelUp, {});
 }
 
-StatBoxModel::View StatBoxModel::groupsView(std::string text, const std::vector<StatId>& stats) const
+StatBoxModel::View StatBoxModel::groupsView(const std::vector<StatId>& stats) const
 {
-	View result;
-	result.page.text = std::move(text);
-	result.page.buttons.push_back(Button{ std::string(kBack) });
-	result.actions.emplace_back(Open{ .screen = Screen::Stats, .group = {}, .page = overviewPage_ });
-	for (std::string& group : groupsOf(stats)) {
-		result.page.buttons.push_back(Button{ group });
-		result.actions.emplace_back(Open{ .screen = Screen::Group, .group = std::move(group), .page = 0 });
+	View items;
+	for (const std::string& group : groupsOf(stats)) {
+		items.add(group, Open{ .screen = Screen::Group, .group = group, .page = 0 });
 	}
-	return result;
+	return listView(std::move(items), Open{ .screen = Screen::Stats, .group = {}, .page = overviewPage_ }, kLevelUp,
+		{});
 }
 
 StatBoxModel::View StatBoxModel::groupView() const
 {
 	std::vector<StatId> stats = assignableStats();
 	std::erase_if(stats, [this](const StatId& stat) { return groupOf(stat) != group_; });
-	return statsButtons(std::format("{}\n{}", group_, freePointsText(service_.pendingPoints())), std::move(stats),
-		Open{ .screen = Screen::LevelUp, .group = {}, .page = 0 });
+	return listView(statItems(std::move(stats)), Open{ .screen = Screen::LevelUp, .group = {}, .page = levelUpPage_ },
+		group_, group_);
 }
 
-StatBoxModel::View StatBoxModel::statsButtons(std::string text, std::vector<StatId> stats, Open back) const
+StatBoxModel::View StatBoxModel::statItems(std::vector<StatId> stats) const
 {
 	View result;
-	result.page.text = std::move(text);
-	result.page.buttons.push_back(Button{ std::string(kBack) });
-	result.actions.emplace_back(std::move(back));
 	for (StatId& stat : stats) {
-		result.page.buttons.push_back(Button{ statButton(stat) });
-		result.actions.emplace_back(Assign{ std::move(stat) });
+		const std::string text = statButton(stat);
+		result.add(text, Assign{ std::move(stat) });
+	}
+	return result;
+}
+
+StatBoxModel::View StatBoxModel::listView(View items, Open back, std::string_view title,
+	std::string_view unpagedTitle) const
+{
+	// Paged, "Back" and "Next" leave the rest of the box to the items.
+	const std::size_t n = items.actions.size();
+	const std::size_t count = n + 1 > layout_.maxButtons ? partCount(n, layout_.maxButtons - 2) : 1;
+	const std::size_t index = std::min(pageOf(screen_), count - 1);
+	const std::string heading = count > 1 ? partTitle(title, index, count) : std::string(unpagedTitle);
+	const std::string points = freePointsText(service_.pendingPoints());
+
+	View result;
+	result.page.text = heading.empty() ? points : std::format("{}\n{}", heading, points);
+	if (index > 0) {
+		back = Open{ .screen = screen_, .group = group_, .page = index - 1 };
+	}
+	result.add(kBack, std::move(back));
+	const Part shown = part(n, count, index);
+	for (std::size_t item = shown.first; item < shown.first + shown.size; ++item) {
+		result.page.buttons.push_back(std::move(items.page.buttons[item]));
+		result.actions.push_back(std::move(items.actions[item]));
+	}
+	if (index + 1 < count) {
+		result.add(kNext, Open{ .screen = screen_, .group = group_, .page = index + 1 });
 	}
 	return result;
 }
@@ -418,10 +438,42 @@ std::vector<std::string> StatBoxModel::groupsOf(const std::vector<StatId>& stats
 	return result;
 }
 
+std::size_t StatBoxModel::pageOf(Screen screen) const
+{
+	switch (screen) {
+	case Screen::LevelUp:
+		return levelUpPage_;
+	case Screen::Group:
+		return groupPage_;
+	case Screen::Stats:
+		break;
+	}
+	return overviewPage_;
+}
+
+void StatBoxModel::show(const Open& open)
+{
+	screen_ = open.screen;
+	group_ = open.group;
+	switch (open.screen) {
+	case Screen::LevelUp:
+		levelUpPage_ = open.page;
+		return;
+	case Screen::Group:
+		groupPage_ = open.page;
+		return;
+	case Screen::Stats:
+		overviewPage_ = open.page;
+		return;
+	}
+}
+
 void StatBoxModel::startOver()
 {
 	screen_ = Screen::Stats;
 	overviewPage_ = 0;
+	levelUpPage_ = 0;
+	groupPage_ = 0;
 }
 
 }

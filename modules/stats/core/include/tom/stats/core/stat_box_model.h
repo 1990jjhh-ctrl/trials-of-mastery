@@ -58,7 +58,9 @@ struct PressResult
 // The size of the message boxes that show the pages.
 struct StatBoxLayout
 {
-	std::size_t maxButtons = 0;  // the most buttons one message box can show
+	// The most buttons one message box can show. The model raises it to 4,
+	// the most an overview page needs: "Back", "Level Up", "Cancel", "Next".
+	std::size_t maxButtons = 0;
 	// The most lines of text one message box shows, the INI's LinesPerPage
 	// (ST-24, Settings::statBoxLinesPerPage). The model raises it to 2, a
 	// group name and one line.
@@ -89,9 +91,14 @@ struct StatBoxLayout
 // button per stat that takes free points (ST-2) with its label and effective
 // value, after "Back" to the page "Level Up" was pressed on (Stats plan,
 // assumption 17); each stat button assigns one point, and the last point
-// leads back to the first page. When those
-// stats and "Back" need more buttons than one box has, "Level Up" shows one
-// button per group instead, and each group shows its stats (ST-21).
+// leads back to the first page. When those stats and "Back" need more buttons
+// than one box has, "Level Up" shows one button per group instead, and each
+// group shows its stats (ST-21). A list of buttons, the groups or one group's
+// stats, that does not fit with "Back" either is split into pages with its
+// buttons spread evenly, each page with "Back" first and, but for the last,
+// "Next" last, its text headed "Level Up (<i> / <k>)" or
+// "<group> (<i> / <k>)" (Stats plan, assumption 17). "Back" on the first
+// page leaves the list, from the second page on it leads to the previous one.
 //
 // Groups come in the order of ST-21: the groups the stats files name except
 // Other, then the other groups in the order of their first active stat, so
@@ -134,7 +141,7 @@ private:
 	{
 		Screen      screen;
 		std::string group;     // for Screen::Group
-		std::size_t page = 0;  // the index of the overview page to show
+		std::size_t page = 0;  // the index of the screen's page to show
 	};
 	struct Assign
 	{
@@ -162,10 +169,16 @@ private:
 	[[nodiscard]] View view() const;
 	[[nodiscard]] View statsView() const;
 	[[nodiscard]] View levelUpView() const;
-	[[nodiscard]] View groupsView(std::string text, const std::vector<StatId>& stats) const;
+	[[nodiscard]] View groupsView(const std::vector<StatId>& stats) const;
 	[[nodiscard]] View groupView() const;
-	// "Back", then one button per stat, which assigns it a point.
-	[[nodiscard]] View statsButtons(std::string text, std::vector<StatId> stats, Open back) const;
+	// One button per stat, which assigns it a point.
+	[[nodiscard]] View statItems(std::vector<StatId> stats) const;
+	// The current page of the list of items on the current screen: "Back",
+	// which opens back from the first page, then the page's items, then
+	// "Next" if a page follows. The text names the free points, under
+	// "<title> (<i> / <k>)" when the list has pages, or else under
+	// unpagedTitle unless it is empty.
+	[[nodiscard]] View listView(View items, Open back, std::string_view title, std::string_view unpagedTitle) const;
 
 	// The active stats that take free points (ST-2).
 	[[nodiscard]] std::vector<StatId> assignableStats() const;
@@ -186,6 +199,10 @@ private:
 	// The groups of the stats, each once, in the order of ST-21.
 	[[nodiscard]] std::vector<std::string> groupsOf(const std::vector<StatId>& stats) const;
 
+	// The index of the screen's page, shown up to its last page.
+	[[nodiscard]] std::size_t pageOf(Screen screen) const;
+	// Shows the page the action opens.
+	void show(const Open& open);
 	// Shows the first overview page.
 	void startOver();
 
@@ -193,8 +210,10 @@ private:
 	const Tables& tables_;
 	StatBoxLayout layout_;
 	Screen        screen_ = Screen::Stats;
-	std::string   group_;             // the group of Screen::Group
-	std::size_t   overviewPage_ = 0;  // shown up to the last page
+	std::string   group_;  // the group of Screen::Group
+	std::size_t   overviewPage_ = 0;
+	std::size_t   levelUpPage_ = 0;
+	std::size_t   groupPage_ = 0;
 	// The lines of the sections that a provider filled, by group.
 	std::map<std::string, std::vector<std::string>> providedLines_;
 	std::vector<Error>                              errors_;

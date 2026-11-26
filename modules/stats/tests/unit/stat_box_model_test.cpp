@@ -825,3 +825,104 @@ TEST_CASE("fewer than 2 lines per page count as 2", "[stat_box][pages]")
 	CHECK(pages.size() == 8);
 	CHECK(pages.front().text == "Warrior (1 / 3)\nStrength (STR) 10 (0 / 100 XP)");
 }
+
+TEST_CASE("a group list that does not fit one box is split into pages", "[stat_box][pages][groups]")
+{
+	Fixture fixture;
+	fixture.stats.onPlayerLevelUp(2);
+	StatBoxModel      box = fixture.box(4, 8);
+	const std::string second = kThiefSection + "\n\n" + kOtherSection;
+	REQUIRE(nextPage(box.press(2)).text == second);
+
+	const Page firstGroups{ "Level Up (1 / 2)\nFree points: 3", { { "Back" }, { "Warrior" }, { "Mage" }, { "Next" } } };
+	const Page secondGroups{ "Level Up (2 / 2)\nFree points: 3", { { "Back" }, { "Thief" }, { "Other" } } };
+	CHECK(nextPage(box.press(1)) == firstGroups);
+	CHECK(nextPage(box.press(3)) == secondGroups);
+
+	SECTION("Back on the second page leads to the first")
+	{
+		CHECK(nextPage(box.press(0)) == firstGroups);
+	}
+
+	SECTION("Back on the first page returns to the overview page it came from")
+	{
+		REQUIRE(nextPage(box.press(0)) == firstGroups);
+
+		CHECK(nextPage(box.press(0)) == Page{ second, { { "Back" }, { "Level Up" }, { "Cancel" } } });
+	}
+
+	SECTION("a group opened from the second page returns to it")
+	{
+		CHECK(nextPage(box.press(1)) ==
+			  Page{ "Thief\nFree points: 3", { { "Back" }, { "Dexterity (DEX) 10" }, { "Perception (PER) 10" } } });
+		CHECK(nextPage(box.press(0)) == secondGroups);
+	}
+}
+
+TEST_CASE("a group whose stats do not fit one box is split into pages", "[stat_box][pages][groups]")
+{
+	Tables tables = defaultTables();
+	for (const auto* name : { "Mod:A", "Mod:B", "Mod:C" }) {
+		addEntry(tables, StatId{ name }, "Warrior");
+	}
+	Fixture fixture(tables);
+	for (const auto* name : { "Mod:A", "Mod:B", "Mod:C" }) {
+		REQUIRE(fixture.stats.registerStat(StatId{ name }));
+	}
+	fixture.stats.onPlayerLevelUp(2);
+	StatBoxModel box = fixture.box(4, 8);
+	REQUIRE(std::holds_alternative<Page>(box.press(0).next));  // Level Up
+
+	const Page firstWarrior{ "Warrior (1 / 3)\nFree points: 3",
+		{ { "Back" }, { "Strength (STR) 10" }, { "Constitution (CON) 10" }, { "Next" } } };
+	const Page secondWarrior{ "Warrior (2 / 3)\nFree points: 3",
+		{ { "Back" }, { "Endurance (END) 10" }, { "A 7" }, { "Next" } } };
+	CHECK(nextPage(box.press(1)) == firstWarrior);
+	CHECK(nextPage(box.press(3)) == secondWarrior);
+	CHECK(nextPage(box.press(3)) == Page{ "Warrior (3 / 3)\nFree points: 3", { { "Back" }, { "B 7" }, { "C 7" } } });
+	CHECK(nextPage(box.press(0)) == secondWarrior);
+
+	SECTION("a point assigned on the second page stays on it")
+	{
+		const PressResult assigned = box.press(2);  // Mod:A
+
+		CHECK_FALSE(assigned.error);
+		CHECK(nextPage(assigned) == Page{ "Warrior (2 / 3)\nFree points: 2",
+										{ { "Back" }, { "Endurance (END) 10" }, { "A 8" }, { "Next" } } });
+	}
+
+	SECTION("Back leads to the previous page, then to the group list")
+	{
+		CHECK(nextPage(box.press(0)) == firstWarrior);
+		CHECK(nextPage(box.press(0)).text == "Level Up (1 / 2)\nFree points: 3");
+	}
+
+	SECTION("the last point from a later page shows the first overview page")
+	{
+		REQUIRE(nextPage(box.press(3)).text.starts_with("Warrior (3 / 3)\n"));
+		for (int point = 0; point < 3; ++point) {
+			REQUIRE_FALSE(box.press(1).error);  // Mod:B
+		}
+
+		const Page page = box.page();
+		CHECK(page.buttons == std::vector<Button>{ { "OK" }, { "Next" } });
+		CHECK(page.text.starts_with("Warrior\nStrength (STR) 10 (0 / 100 XP)\n"));
+		CHECK(fixture.stats.read(kPlayer, StatId{ "Mod:B" })->accumulated == 3);
+	}
+}
+
+TEST_CASE("fewer than 4 buttons count as 4", "[stat_box][pages]")
+{
+	Fixture fixture;
+	fixture.stats.onPlayerLevelUp(2);
+	StatBoxModel three = fixture.box(3, 4);
+	StatBoxModel four = fixture.box(4, 4);
+
+	const Page second = nextPage(three.press(2));
+	CHECK(second == Page{ kMageSection, { { "Back" }, { "Level Up" }, { "Cancel" }, { "Next" } } });
+	CHECK(second == nextPage(four.press(2)));
+	const Page groups = nextPage(three.press(1));
+	CHECK(groups.text == "Level Up (1 / 2)\nFree points: 3");
+	CHECK(groups == nextPage(four.press(1)));
+	CHECK(nextPage(three.press(3)) == nextPage(four.press(3)));
+}
