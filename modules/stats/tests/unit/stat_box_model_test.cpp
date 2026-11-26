@@ -6,6 +6,7 @@
 #include "tom/stats/core/config/settings.h"
 #include "tom/stats/core/config/tables.h"
 #include "tom/stats/core/effects.h"
+#include "tom/stats/core/stat_box_sections.h"
 #include "tom/stats/core/stat_registry.h"
 #include "tom/stats/core/stat_value.h"
 #include "tom/stats/core/stats_service.h"
@@ -15,6 +16,7 @@
 #include <array>
 #include <cstddef>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -29,6 +31,7 @@ using tom::stats::Page;
 using tom::stats::PressResult;
 using tom::stats::StatBoxLayout;
 using tom::stats::StatBoxModel;
+using tom::stats::StatBoxSections;
 using tom::stats::StatsService;
 using tom::stats::StatValue;
 using tom::stats::Tables;
@@ -117,11 +120,13 @@ void addEntry(Tables& tables, const StatId& stat, std::string group, std::option
 	entry.defaultBase = 7;
 }
 
-// The player of a service over the tables, and boxes over both.
+// The player of a service over the tables, and boxes over both and the
+// section providers.
 struct Fixture
 {
-	Tables       boxTables;
-	StatsService stats;
+	Tables          boxTables;
+	StatsService    stats;
+	StatBoxSections sections;
 
 	explicit Fixture(Tables tables = defaultTables()) :
 		boxTables(std::move(tables)),
@@ -132,7 +137,7 @@ struct Fixture
 
 	[[nodiscard]] StatBoxModel box(std::size_t maxButtons = kRoomForAll)
 	{
-		return StatBoxModel(stats, boxTables, StatBoxLayout{ .maxButtons = maxButtons });
+		return StatBoxModel(stats, boxTables, sections, StatBoxLayout{ .maxButtons = maxButtons });
 	}
 
 	// The line of the stat with that label on the first page.
@@ -254,7 +259,7 @@ TEST_CASE("labels of registered stats", "[stat_box][labels]")
 		Tables withoutEntry = fixture.boxTables;
 		withoutEntry.stats.erase(kLuc);
 
-		const StatBoxModel box(fixture.stats, withoutEntry, StatBoxLayout{ .maxButtons = kRoomForAll });
+		const StatBoxModel box(fixture.stats, withoutEntry, fixture.sections, StatBoxLayout{ .maxButtons = kRoomForAll });
 
 		CHECK(box.page().text == withSection("Luck\nLUC 7 (0 / 100 XP)"));
 	}
@@ -343,6 +348,101 @@ TEST_CASE("groups come in the stats files' order, then by registration, with Oth
 
 		CHECK_FALSE(fixture.box().page().text.contains("Thief"));
 	}
+}
+
+TEST_CASE("a section provider fills the section of its namespace's group", "[stat_box][sections]")
+{
+	const StatId kLuc{ "Luck:LUC" };
+	Tables       tables = defaultTables();
+	addEntry(tables, kLuc, "Luck", "Luck", "LUC");
+	Fixture fixture(tables);
+	REQUIRE(fixture.stats.registerStat(kLuc));
+	fixture.stats.onPlayerLevelUp(2);
+	const std::string statLines = withSection("Luck\nLuck (LUC) 7 (0 / 100 XP)");
+
+	int  calls = 0;
+	auto provider = [&calls] {
+		++calls;
+		return std::vector<std::string>{ "Lockpicking +1 %", "Pickpocket +2 %" };
+	};
+	REQUIRE(fixture.sections.set("Luck", provider));
+
+	SECTION("its lines replace the stat lines, under the group name")
+	{
+		StatBoxModel box = fixture.box();
+
+		CHECK(box.page().text == withSection("Luck\nLockpicking +1 %\nPickpocket +2 %"));
+		CHECK(box.errors().empty());
+	}
+
+	SECTION("it is called once per model, also across presses")
+	{
+		StatBoxModel box = fixture.box();
+		REQUIRE(calls == 1);
+
+		REQUIRE(nextPage(box.press(0)).buttons.back() == Button{ "Back" });
+		CHECK(nextPage(box.press(9)).text == withSection("Luck\nLockpicking +1 %\nPickpocket +2 %"));
+		CHECK(box.page().text == withSection("Luck\nLockpicking +1 %\nPickpocket +2 %"));
+		CHECK(calls == 1);
+
+		StatBoxModel next = fixture.box();
+		CHECK(calls == 2);
+	}
+
+	SECTION("the Level Up page still shows the group's stats")
+	{
+		StatBoxModel box = fixture.box();
+
+		CHECK(nextPage(box.press(0)).buttons[8] == Button{ "Luck (LUC) 7" });
+	}
+
+	SECTION("a provider that removes itself does no harm")
+	{
+		auto removesItself = [&sections = fixture.sections] {
+			sections.remove("Luck");
+			return std::vector<std::string>{ "Lockpicking +1 %" };
+		};
+		REQUIRE(fixture.sections.set("Luck", removesItself));
+
+		StatBoxModel box = fixture.box();
+
+		CHECK(box.page().text == withSection("Luck\nLockpicking +1 %"));
+		CHECK(fixture.sections.find("Luck") == nullptr);
+	}
+
+	SECTION("a provider that throws leaves the stat lines and an error")
+	{
+		auto throws = []() -> std::vector<std::string> { throw std::runtime_error("no luck"); };
+		REQUIRE(fixture.sections.set("Luck", throws));
+
+		StatBoxModel box = fixture.box();
+
+		CHECK(box.page().text == statLines);
+		REQUIRE(box.errors().size() == 1);
+		CHECK(box.errors().front().message.contains("Luck"));
+		CHECK(box.errors().front().message.contains("no luck"));
+	}
+
+	SECTION("after remove the stat lines are back")
+	{
+		fixture.sections.remove("Luck");
+
+		CHECK(fixture.box().page().text == statLines);
+	}
+}
+
+TEST_CASE("a provider whose namespace has no active stat adds no section", "[stat_box][sections]")
+{
+	Fixture fixture;
+	int     calls = 0;
+	auto    provider = [&calls] {
+		++calls;
+		return std::vector<std::string>{ "Lockpicking +1 %" };
+	};
+	REQUIRE(fixture.sections.set("Luck", provider));
+
+	CHECK(fixture.box().page().text == kDefaultStatsText);
+	CHECK(calls == 0);
 }
 
 TEST_CASE("pending points offer Level Up and Cancel, and Cancel keeps them", "[stat_box]")

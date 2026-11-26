@@ -7,10 +7,12 @@
 #include "tom/stats/core/config/tables.h"
 #include "tom/stats/core/effects.h"
 #include "tom/stats/core/error.h"
+#include "tom/stats/core/stat_box_sections.h"
 #include "tom/stats/core/stat_registry.h"
 #include "tom/stats/core/stats_service.h"
 
 #include <cstddef>
+#include <map>
 #include <optional>
 #include <string>
 #include <variant>
@@ -64,7 +66,10 @@ struct StatBoxLayout
 // active stat, each under the group's name and separated by an empty line
 // (ST-24; Stats plan, assumption 17). A stat's line holds its label, its
 // effective value and its XP toward the next point, e.g.
-// "Intelligence (INT) 12 (40 / 100 XP)". The page closes with "OK", or
+// "Intelligence (INT) 12 (40 / 100 XP)". A section whose group is the
+// namespace of a provider in StatBoxSections shows the provider's lines in
+// place of the stat lines (ST-26); the Level Up pages still show its stats.
+// The page closes with "OK", or
 // offers "Level Up" and "Cancel" while free points are pending and no module
 // has claimed point assignment (ST-21, ST-22). "Cancel" closes the box and
 // leaves the points pending. "Level Up" shows the pending points and one
@@ -85,13 +90,21 @@ public:
 	// the service was built from, for each stat's group, display name and
 	// short name and for the order of the groups (ST-21, ST-24). A stat
 	// without an entry is in its namespace's group, or in Other.
-	StatBoxModel(StatsService& service, const Tables& tables, StatBoxLayout layout);
+	//
+	// Calls the provider of each section the first page shows, once, and
+	// keeps its lines while the model lives, so a module's changes show at
+	// the next opening (Stats plan, assumption 17). A provider that throws
+	// leaves its section with the stat lines and adds to errors().
+	StatBoxModel(StatsService& service, const Tables& tables, const StatBoxSections& sections, StatBoxLayout layout);
 
 	// The page to show now.
 	[[nodiscard]] Page page() const;
 
 	// Presses the button with that index on the current page.
 	[[nodiscard]] PressResult press(std::size_t button);
+
+	// The section providers that failed in the constructor, for the log.
+	[[nodiscard]] const std::vector<Error>& errors() const { return errors_; }
 
 private:
 	enum class Screen
@@ -138,7 +151,8 @@ private:
 
 	// The first page's text: the sections of the active stats.
 	[[nodiscard]] std::string sectionsText() const;
-	// The lines of the group's stats among stats.
+	// The provider's lines of the group, or the lines of its stats among
+	// stats.
 	[[nodiscard]] std::vector<std::string> sectionLines(const std::string& group, const std::vector<StatId>& stats) const;
 
 	// "<display name> (<short name>)", or the short name alone (ST-24).
@@ -156,6 +170,9 @@ private:
 	StatBoxLayout layout_;
 	Screen        screen_ = Screen::Stats;
 	std::string   group_;  // the group of Screen::Group
+	// The lines of the sections that a provider filled, by group.
+	std::map<std::string, std::vector<std::string>> providedLines_;
+	std::vector<Error>                              errors_;
 };
 
 }

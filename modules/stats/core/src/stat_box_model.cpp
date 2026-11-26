@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <exception>
+#include <expected>
 #include <format>
 #include <string_view>
 #include <utility>
@@ -50,17 +52,46 @@ void appendOnce(std::vector<std::string>& groups, const std::string& group)
 	}
 }
 
+// Calls the provider of the group's section. It gets a copy, so a provider
+// that removes itself from the registry does no harm.
+[[nodiscard]] std::expected<std::vector<std::string>, Error> provideLines(SectionProvider provider, std::string_view group)
+{
+	try {
+		return provider();
+	} catch (const std::exception& error) {
+		return std::unexpected(Error{ std::format("the stat box section provider of {} failed: {}", group, error.what()) });
+	} catch (...) {
+		return std::unexpected(Error{ std::format("the stat box section provider of {} failed", group) });
+	}
+}
+
 [[nodiscard]] std::string freePointsText(std::int32_t points)
 {
 	return std::format("Free points: {}", points);
 }
 }
 
-StatBoxModel::StatBoxModel(StatsService& service, const Tables& tables, StatBoxLayout layout) :
+StatBoxModel::StatBoxModel(StatsService& service, const Tables& tables, const StatBoxSections& sections,
+	StatBoxLayout layout) :
 	service_(service),
 	tables_(tables),
 	layout_(layout)
-{}
+{
+	const std::vector<StatId>      stats = service_.registry().activeStats();
+	const std::vector<std::string> groups = groupsOf(stats);
+	for (const std::string& group : groups) {
+		const SectionProvider* provider = sections.find(group);
+		if (provider == nullptr) {
+			continue;
+		}
+		auto lines = provideLines(*provider, group);
+		if (!lines) {
+			errors_.push_back(std::move(lines.error()));
+			continue;
+		}
+		providedLines_.emplace(group, std::move(*lines));
+	}
+}
 
 Page StatBoxModel::page() const
 {
@@ -204,6 +235,9 @@ std::string StatBoxModel::sectionsText() const
 
 std::vector<std::string> StatBoxModel::sectionLines(const std::string& group, const std::vector<StatId>& stats) const
 {
+	if (const auto provided = providedLines_.find(group); provided != providedLines_.end()) {
+		return provided->second;
+	}
 	std::vector<std::string> lines;
 	const double             r = service_.r();
 	for (const StatId& stat : stats) {
