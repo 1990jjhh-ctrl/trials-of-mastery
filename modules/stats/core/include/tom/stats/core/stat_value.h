@@ -22,6 +22,13 @@ struct GainResult
 	std::int32_t points = 0;
 };
 
+// Lets XP pay a cost that is larger only by rounding, e.g. cost(1.1, 2) =
+// 121.00000000000001 (ST-5). The tolerance is relative to the price, which
+// addXp takes as the cost of all points one call buys, not the cost of the
+// last of them. The stat box takes it off a cost before rounding it up, so it
+// shows the cost the XP has to reach.
+inline constexpr double kCostTolerance = 1e-9;
+
 // The XP cost of the next point at k active points (ST-5). Returns +inf when
 // the cost overflows the double range (ST-7). Expects r > 0.
 [[nodiscard]] double cost(double r, std::int32_t k);
