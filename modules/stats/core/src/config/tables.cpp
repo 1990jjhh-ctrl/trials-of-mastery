@@ -36,7 +36,7 @@ constexpr std::array<std::string_view, 21> kBuiltInActions{ "WeaponSwing", "BowD
 constexpr std::array<std::string_view, 5> kNamedEffectNames{ "CritChancePhysical", "CritChanceMagic", "LearningSpeed",
 	"DamageRedirection", "MagicDamage" };
 
-constexpr std::array<std::string_view, 4> kStatKeys{ "group", "base", "raceAdjustments", "effects" };
+constexpr std::array<std::string_view, 6> kStatKeys{ "group", "displayName", "shortName", "base", "raceAdjustments", "effects" };
 constexpr std::array<std::string_view, 4> kEffectKeys{ "actorValue", "named", "input", "curve" };
 constexpr std::array<std::string_view, 3> kSkillKeys{ "primary", "secondary", "primaryShare" };
 constexpr std::array<std::string_view, 2> kActionKeys{ "check", "training" };
@@ -193,12 +193,21 @@ std::map<std::string, std::int32_t> readRaceAdjustments(TableReader& reader, con
 	return adjustments;
 }
 
-StatEntry readStat(TableReader& reader, const json& value, const Pointer& path)
+// The group of a stat whose entry names none (ST-21).
+std::string implicitGroup(std::string_view name)
+{
+	const auto space = namespaceOf(name);
+	return std::string(space.empty() ? kOtherGroup : space);
+}
+
+StatEntry readStat(TableReader& reader, const std::string& name, const json& value, const Pointer& path)
 {
 	reader.checkKeys(value, path, kStatKeys);
-	StatEntry  entry;
-	const auto group = reader.text(reader.field(value, path, "group", false), path / "group");
-	entry.group = group.value_or(std::string(kOtherGroup));
+	StatEntry entry;
+	auto      group = reader.text(reader.field(value, path, "group", false), path / "group");
+	entry.group = group ? std::move(*group) : implicitGroup(name);
+	entry.displayName = reader.text(reader.field(value, path, "displayName", false), path / "displayName");
+	entry.shortName = reader.text(reader.field(value, path, "shortName", false), path / "shortName");
 	entry.defaultBase = reader.int32(reader.field(value, path, "base", true), path / "base").value_or(0);
 	entry.raceAdjustments = readRaceAdjustments(reader, reader.field(value, path, "raceAdjustments", false), path / "raceAdjustments");
 	entry.effects = readEffects(reader, reader.field(value, path, "effects", false), path / "effects");
@@ -323,7 +332,7 @@ TableEntry readEntry(Table table, TableReader& reader, const std::string& name, 
 	}
 	switch (table) {
 	case Table::Stats:
-		return readStat(reader, value, path);
+		return readStat(reader, name, value, path);
 	case Table::Skills:
 		return readSkill(reader, value, path);
 	case Table::Actions:
@@ -420,6 +429,24 @@ void ignoreUnknownRaces(StatsTable& stats, const MergeResult& merged, const Race
 	}
 }
 
+// The groups the stats files set, in the order the files first name a stat
+// of each (Stats plan, assumption 17).
+std::vector<std::string> statGroups(const StatsTable& stats, const MergeResult& merged)
+{
+	std::vector<std::string> groups;
+	for (const auto& name : merged.keyOrder) {
+		const auto stat = stats.find(StatId{ name });
+		const auto origin = merged.origins.find((Pointer{} / name / "group").to_string());
+		if (stat == stats.end() || origin == merged.origins.end() || origin->second.layer == Layer::Registered) {
+			continue;
+		}
+		if (std::ranges::find(groups, stat->second.group) == groups.end()) {
+			groups.push_back(stat->second.group);
+		}
+	}
+	return groups;
+}
+
 // A core stat without an entry, named with the file that removed it.
 void checkCoreStats(const StatsTable& stats, const MergeResult& merged, std::vector<ConfigError>& errors)
 {
@@ -474,6 +501,14 @@ bool isNamespaced(std::string_view name)
 	return colon != std::string_view::npos && colon > 0 && colon + 1 < name.size() && name.find(':', colon + 1) == std::string_view::npos;
 }
 
+std::string_view namespaceOf(std::string_view name)
+{
+	if (!isNamespaced(name)) {
+		return {};
+	}
+	return name.substr(0, name.find(':'));
+}
+
 EntryValidator entryValidator(Table table)
 {
 	return [table](const std::string& name, const json& entry) -> std::optional<std::string> {
@@ -499,6 +534,7 @@ std::expected<Tables, TablesError> buildTables(const MergedTables& merged, const
 		return std::unexpected(TablesError{ std::move(errors), std::move(tables.dropped) });
 	}
 	ignoreUnknownRaces(tables.stats, merged.stats, races, tables.ignoredRaceAdjustments);
+	tables.statGroups = statGroups(tables.stats, merged.stats);
 
 	tables.skills = readTable<SkillEntry>(Table::Skills, merged.skills, tables.dropped);
 	dropUndefinedStats(tables.skills, Table::Skills, merged.skills, tables.stats, tables.dropped);

@@ -164,6 +164,8 @@ TEST_CASE("the schemas reject what the entry validators reject", "[tables][data]
 	CHECK(rejects("stats", { { "STR", { { "raceAdjustments", { { "NordRace", 0.5 } } } } } }));
 	CHECK(rejects("stats", { { "DEX", { { "effects", { { "CritChanceMagic", { { "input", "total" } } } } } } } }));
 	CHECK(rejects("stats", { { "STR", { { "effects", { { "CarryCapacity", { { "input", "absolute" } } } } } } } }));
+	CHECK(rejects("stats", { { "STR", { { "displayName", 1 } } } }));
+	CHECK(rejects("stats", { { "STR", { { "shortName", "" } } } }));
 
 	CHECK_FALSE(rejects("stats", { { "Luck:LUC", { { "base", 0 } } } }));
 	CHECK_FALSE(rejects("skills", { { "CSF:Swimming", { { "primary", "STR" }, { "secondary", "DEX" }, { "primaryShare", 1 } } } }));
@@ -247,6 +249,33 @@ TEST_CASE("the shipped stats hold the default groups of ST-27", "[tables][data]"
 		actual[stat.group].insert(id.name);
 	}
 	CHECK(actual == expected);
+}
+
+TEST_CASE("the shipped stats hold the display names and short names of PRD 6", "[tables][data]")
+{
+	const std::map<std::string, std::pair<std::string, std::string>> expected{
+		{ "STR", { "Strength", "STR" } },
+		{ "DEX", { "Dexterity", "DEX" } },
+		{ "CON", { "Constitution", "CON" } },
+		{ "INT", { "Intelligence", "INT" } },
+		{ "WIS", { "Wisdom", "WIS" } },
+		{ "PER", { "Perception", "PER" } },
+		{ "END", { "Endurance", "END" } },
+		{ "CHA", { "Charisma", "CHA" } },
+	};
+
+	const auto tables = builtShipped();
+
+	std::map<std::string, std::pair<std::string, std::string>> actual;
+	for (const auto& [id, stat] : tables.stats) {
+		actual.emplace(id.name, std::pair{ stat.displayName.value_or(""), stat.shortName.value_or("") });
+	}
+	CHECK(actual == expected);
+}
+
+TEST_CASE("the shipped stat groups are in the order of PRD 7.8", "[tables][data]")
+{
+	CHECK(builtShipped().statGroups == std::vector<std::string>{ "Warrior", "Mage", "Thief", "Other" });
 }
 
 TEST_CASE("the shipped pools come from CON, END and INT (ST-10)", "[tables][data]")

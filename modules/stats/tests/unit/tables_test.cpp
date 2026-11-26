@@ -24,6 +24,7 @@ using tom::stats::LinearCurve;
 using tom::stats::MergedTables;
 using tom::stats::MergeResult;
 using tom::stats::NamedEffect;
+using tom::stats::namespaceOf;
 using tom::stats::PluginInfo;
 using tom::stats::PluginQuery;
 using tom::stats::PowerCurve;
@@ -112,6 +113,8 @@ TEST_CASE("tables with the core stats only are valid", "[tables]")
 	CHECK(result->stats.size() == 8);
 	CHECK(result->stats.at(StatId{ "STR" }).defaultBase == 10);
 	CHECK(result->stats.at(StatId{ "STR" }).group == "Other");
+	CHECK_FALSE(result->stats.at(StatId{ "STR" }).displayName);
+	CHECK_FALSE(result->stats.at(StatId{ "STR" }).shortName);
 	CHECK(result->stats.at(StatId{ "STR" }).raceAdjustments.empty());
 	CHECK(result->stats.at(StatId{ "STR" }).effects.empty());
 	CHECK(result->skills.empty());
@@ -122,10 +125,10 @@ TEST_CASE("tables with the core stats only are valid", "[tables]")
 	CHECK(result->placeholders.empty());
 }
 
-TEST_CASE("a stat entry gives its group, base, race adjustments and effects", "[tables]")
+TEST_CASE("a stat entry gives its group, names, base, race adjustments and effects", "[tables]")
 {
 	auto stats = coreStats();
-	stats["CON"] = { { "group", "Warrior" }, { "base", 12 }, { "raceAdjustments", { { "NordRace", 1 } } },
+	stats["CON"] = { { "group", "Warrior" }, { "displayName", "Constitution" }, { "shortName", "CON" }, { "base", 12 }, { "raceAdjustments", { { "NordRace", 1 } } },
 		{ "effects", { { "Health", { { "actorValue", "Health" }, { "curve", kLinear } } },
 						 { "Crit", { { "named", "CritChancePhysical" }, { "curve", kLinear } } },
 						 { "Learning", { { "named", "LearningSpeed" }, { "input", "absolute" }, { "curve", kLinear } } } } } };
@@ -137,6 +140,8 @@ TEST_CASE("a stat entry gives its group, base, race adjustments and effects", "[
 	REQUIRE(result);
 	const auto& con = result->stats.at(StatId{ "CON" });
 	CHECK(con.group == "Warrior");
+	CHECK(con.displayName == "Constitution");
+	CHECK(con.shortName == "CON");
 	CHECK(con.defaultBase == 12);
 	CHECK(con.raceAdjustments == std::map<std::string, std::int32_t>{ { "NordRace", 1 } });
 	REQUIRE(con.effects.size() == 3);
@@ -146,6 +151,95 @@ TEST_CASE("a stat entry gives its group, base, race adjustments and effects", "[
 	CHECK(con.effects.at("Health").input == CurveInput::Relative);
 	CHECK(con.effects.at("Crit").input == CurveInput::Relative);
 	CHECK(con.effects.at("Learning").input == CurveInput::Absolute);
+}
+
+TEST_CASE("a stat entry without a display name or short name loads with them empty", "[tables]")
+{
+	auto stats = coreStats();
+	stats["Luck:LUC"] = { { "base", 0 }, { "shortName", "LUC" } };
+	stats["Mod:AGI"] = { { "base", 0 }, { "displayName", "Agility" } };
+	auto tables = minimal();
+	tables.stats = merge(Table::Stats, { { "_default.json", stats } });
+
+	const auto result = buildTables(tables);
+
+	REQUIRE(result);
+	CHECK_FALSE(result->stats.at(StatId{ "Luck:LUC" }).displayName);
+	CHECK(result->stats.at(StatId{ "Luck:LUC" }).shortName == "LUC");
+	CHECK(result->stats.at(StatId{ "Mod:AGI" }).displayName == "Agility");
+	CHECK_FALSE(result->stats.at(StatId{ "Mod:AGI" }).shortName);
+}
+
+TEST_CASE("a non-text or empty display name or short name skips its file", "[tables][validator]")
+{
+	CHECK(rejection(Table::Stats, "STR", { { "base", 10 }, { "displayName", 1 } }) == "/STR/displayName: must be a non-empty text");
+	CHECK(rejection(Table::Stats, "STR", { { "base", 10 }, { "shortName", "" } }) == "/STR/shortName: must be a non-empty text");
+
+	const auto result = merge(Table::Stats, {
+												{ "_default.json", coreStats() },
+												{ "names.json", { { "STR", { { "displayName", "Might" } } }, { "DEX", { { "shortName", "" } } } } },
+												{ "later.json", { { "CON", { { "shortName", "CON" } } } } },
+											});
+
+	const auto invalid = invalidEntries(result);
+	REQUIRE(invalid.size() == 1);
+	CHECK(invalid[0].file == "names.json");
+	CHECK(invalid[0].key == "/DEX");
+	CHECK(invalid[0].detail == "/DEX/shortName: must be a non-empty text");
+	CHECK_FALSE(result.merged.at("STR").contains("displayName"));
+	CHECK(result.merged.at("CON").at("shortName") == "CON");
+}
+
+TEST_CASE("a stat without a group is in its namespace's group, or in Other", "[tables]")
+{
+	auto stats = coreStats();
+	stats["STR"]["group"] = "Warrior";
+	stats["Mod:Foo"] = { { "base", 0 } };
+	stats["Mod:Bar"] = { { "base", 0 }, { "group", "Mage" } };
+	auto tables = minimal();
+	tables.stats = merge(Table::Stats, { { "_default.json", stats }, { "ungroup.json", { { "STR", { { "group", nullptr } } } } } });
+
+	const auto result = buildTables(tables);
+
+	REQUIRE(result);
+	CHECK(result->stats.at(StatId{ "Mod:Foo" }).group == "Mod");
+	CHECK(result->stats.at(StatId{ "Mod:Bar" }).group == "Mage");
+	CHECK(result->stats.at(StatId{ "STR" }).group == "Other");
+}
+
+TEST_CASE("the stat groups follow the order in which the stats files name their stats", "[tables][groups]")
+{
+	const std::vector<TableSource> sources{
+		{ "_default.json", R"({"STR": {"base": 10, "group": "Warrior"}, "DEX": {"base": 10, "group": "Thief"},
+			"CON": {"base": 10, "group": "Warrior"}, "INT": {"base": 10, "group": "Mage"}, "WIS": {"base": 10},
+			"PER": {"base": 10}, "END": {"base": 10}, "CHA": {"base": 10, "group": "Other"}})" },
+		{ "patch.json", R"({"Mod:Foo": {"base": 0}, "Mod:AGI": {"base": 2}, "Mod:Bar": {"base": 0, "group": "Mage"}})" },
+	};
+	auto tables = minimal();
+	tables.stats = mergeTable(sources, NoPlugins{}, { { "Mod:AGI", { { "base", 0 }, { "group", "Agile" } } } }, entryValidator(Table::Stats));
+
+	const auto result = buildTables(tables);
+
+	REQUIRE(result);
+	CHECK(result->stats.at(StatId{ "Mod:AGI" }).group == "Agile");
+	CHECK(result->statGroups == std::vector<std::string>{ "Warrior", "Thief", "Mage", "Other" });
+}
+
+TEST_CASE("a patch that gives a stat a new group puts the group at the stat's position", "[tables][groups]")
+{
+	const std::vector<TableSource> sources{
+		{ "_default.json", R"({"STR": {"base": 10, "group": "Warrior"}, "DEX": {"base": 10, "group": "Thief"},
+			"CON": {"base": 10, "group": "Warrior"}, "INT": {"base": 10, "group": "Mage"}, "WIS": {"base": 10, "group": "Mage"},
+			"PER": {"base": 10, "group": "Thief"}, "END": {"base": 10}, "CHA": {"base": 10}})" },
+		{ "patch.json", R"({"PER": {"group": "Rogue"}, "DEX": {"group": "Rogue"}})" },
+	};
+	auto tables = minimal();
+	tables.stats = mergeTable(sources, NoPlugins{}, json::object(), entryValidator(Table::Stats));
+
+	const auto result = buildTables(tables);
+
+	REQUIRE(result);
+	CHECK(result->statGroups == std::vector<std::string>{ "Warrior", "Rogue", "Mage" });
 }
 
 TEST_CASE("an integer may be written with a zero fraction", "[tables]")
@@ -469,4 +563,12 @@ TEST_CASE("the namespacing rule needs one colon between two names", "[tables]")
 	CHECK_FALSE(isNamespaced(":LUC"));
 	CHECK_FALSE(isNamespaced("Luck:"));
 	CHECK_FALSE(isNamespaced("A:B:C"));
+}
+
+TEST_CASE("the namespace of a name is the part before the colon", "[tables]")
+{
+	CHECK(namespaceOf("Luck:LUC") == "Luck");
+	CHECK(namespaceOf("STR").empty());
+	CHECK(namespaceOf(":LUC").empty());
+	CHECK(namespaceOf("A:B:C").empty());
 }

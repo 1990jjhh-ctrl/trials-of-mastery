@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Trials of Mastery Stats: stats table",
-  "description": "Group, default base, race adjustments and effects per stat (ST-3, ST-9, ST-21, ST-27). Every core stat needs an entry.",
+  "description": "Group, display name and short name, default base, race adjustments and effects per stat (ST-3, ST-9, ST-21, ST-24, ST-27). Every core stat needs an entry.",
   "type": "object",
   "propertyNames": { "$ref": "common.schema.json#/$defs/statName" },
   "additionalProperties": { "$ref": "#/$defs/stat" },
@@ -10,7 +10,17 @@
       "type": "object",
       "properties": {
         "group": {
-          "description": "The stat box group (ST-21). A stat without a group is in \"Other\".",
+          "description": "The stat box group (ST-21). A namespaced stat without a group is in its namespace's group (\"Luck:LUC\" in \"Luck\"), any other stat without one in \"Other\".",
+          "type": "string",
+          "minLength": 1
+        },
+        "displayName": {
+          "description": "The stat's name in the stat box, e.g. \"Strength\" (ST-24).",
+          "type": "string",
+          "minLength": 1
+        },
+        "shortName": {
+          "description": "The stat's short name in the stat box, e.g. \"STR\" (ST-24).",
           "type": "string",
           "minLength": 1
         },

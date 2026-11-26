@@ -105,6 +105,12 @@ struct MergeResult
 	// JSON pointer of each leaf of `merged` (a non-object value or an empty
 	// object) -> the layer that set it.
 	std::map<std::string, Origin> origins;
+	// The top-level keys of `merged` that a file set, in the order the files
+	// first set them: files in merge order, each file's keys in its text
+	// order. A key a null removes leaves the list, and a later file that sets
+	// it again appends it. Keys that only the registered entries set are not
+	// listed.
+	std::vector<std::string> keyOrder;
 };
 
 inline constexpr std::string_view kDefaultFileName = "_default.json";

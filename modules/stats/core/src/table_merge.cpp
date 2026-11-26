@@ -51,13 +51,29 @@ void eraseSubtree(std::map<std::string, Value>& map, const std::string& path)
 	}
 }
 
+// The top-level keys of a JSON object text in the order the text names them.
+// nlohmann::json sorts the keys of an object, so the text is parsed a second
+// time as an ordered_json. Only called on text that json::parse accepted.
+std::vector<std::string> textOrder(const std::string& text)
+{
+	// Bound to a local: items() only points to its object, so a temporary
+	// would die before the loop runs (before C++23, P2718R0).
+	const auto               ordered = nlohmann::ordered_json::parse(text);
+	std::vector<std::string> keys;
+	for (const auto& [key, value] : ordered.items()) {
+		keys.push_back(key);
+	}
+	return keys;
+}
+
 // A parsed file and where it goes in the merge order.
 struct OrderedFile
 {
-	Origin      origin;
-	std::size_t loadIndex = 0;  // index in the active plugins, for Layer::ModPatch
-	std::string name;           // file name without folder
-	json        content;
+	Origin                   origin;
+	std::size_t              loadIndex = 0;  // index in the active plugins, for Layer::ModPatch
+	std::string              name;           // file name without folder
+	json                     content;
+	std::vector<std::string> keys;  // the top-level keys of `content`, in text order
 };
 
 bool mergesBefore(const OrderedFile& a, const OrderedFile& b)
@@ -125,6 +141,7 @@ void FileOrder::add(const TableSource& source)
 		skip(file, Diagnostic::Kind::InvalidFile, "top level is not an object");
 		return;
 	}
+	ordered->keys = textOrder(source.text);
 	files_.push_back(std::move(*ordered));
 }
 
@@ -145,14 +162,14 @@ std::optional<OrderedFile> FileOrder::classify(const TableSource& source, const 
 {
 	if (source.folder == TableSource::Folder::Table) {
 		const auto layer = equalsIgnoreCase(source.name, kDefaultFileName) ? Layer::Default : Layer::Patch;
-		return OrderedFile{ { layer, file }, 0, source.name, {} };
+		return OrderedFile{ { layer, file }, 0, source.name, {}, {} };
 	}
 	const auto index = lastActive(file, stem);
 	if (!index) {
 		skip(file, Diagnostic::Kind::InactivePlugin, "");
 		return std::nullopt;
 	}
-	return OrderedFile{ { Layer::ModPatch, file }, *index, source.name, {} };
+	return OrderedFile{ { Layer::ModPatch, file }, *index, source.name, {}, {} };
 }
 
 // Load-order index of the last active plugin named `stem`. Warns when several
@@ -212,6 +229,7 @@ private:
 	void                                   release(const std::string& path, const Origin& origin);
 	void                                   releaseChildren(const std::string& path, const Origin& origin);
 	void                                   reportConflict(const std::string& path, const std::string& earlierFile, const Origin& origin);
+	void                                   recordKeys(const OrderedFile& file);
 
 	MergeResult&                       result_;
 	std::map<std::string, std::string> owners_;  // JSON pointer of a key a patch set -> that patch file
@@ -225,6 +243,7 @@ void Merger::applyFile(const OrderedFile& file, const EntryValidator& validator)
 	if (!validator) {
 		result_.diagnostics.push_back({ Diagnostic::Kind::Loaded, file.origin.file, "", "" });
 		apply(file.content, file.origin);
+		recordKeys(file);
 		return;
 	}
 	auto       merged = result_.merged;
@@ -236,6 +255,7 @@ void Merger::applyFile(const OrderedFile& file, const EntryValidator& validator)
 	apply(file.content, file.origin);
 	const auto rejection = firstRejected(file.content, validator);
 	if (!rejection) {
+		recordKeys(file);
 		return;
 	}
 	result_.merged = std::move(merged);
@@ -358,6 +378,22 @@ void Merger::releaseChildren(const std::string& path, const Origin& origin)
 void Merger::reportConflict(const std::string& path, const std::string& earlierFile, const Origin& origin)
 {
 	result_.diagnostics.push_back({ Diagnostic::Kind::Conflict, origin.file, path, earlierFile });
+}
+
+// Adds the top-level keys a merged file set to the key order and takes out
+// those it removed.
+void Merger::recordKeys(const OrderedFile& file)
+{
+	auto& order = result_.keyOrder;
+	for (const auto& key : file.keys) {
+		const auto listed = std::ranges::find(order, key);
+		const bool removed = file.content.at(key).is_null();
+		if (removed && listed != order.end()) {
+			order.erase(listed);
+		} else if (!removed && listed == order.end()) {
+			order.push_back(key);
+		}
+	}
 }
 
 }
