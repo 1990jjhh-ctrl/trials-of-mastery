@@ -13,12 +13,6 @@ namespace
 {
 constexpr double kFirstPointCost = 100.0;
 
-// Lets XP pay a cost that is larger only by rounding, e.g. cost(1.1, 2) =
-// 121.00000000000001 (ST-5). The tolerance is relative to the price canPay
-// gets, which addXp passes as the cost of all points one call buys, not the
-// cost of the last of them.
-constexpr double kCostTolerance = 1e-9;
-
 constexpr std::int32_t kMaxPoints = std::numeric_limits<std::int32_t>::max();
 
 [[nodiscard]] bool canPay(double xp, double price)
