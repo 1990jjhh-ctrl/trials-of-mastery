@@ -60,10 +60,12 @@ struct Effect
 	CurveInput                                  input = CurveInput::Relative;
 };
 
-// ST-3, ST-9, ST-21.
+// ST-3, ST-9, ST-21, ST-24.
 struct StatEntry
 {
 	std::string                         group{ kOtherGroup };
+	std::optional<std::string>          displayName;  // ST-24; nullopt when the entry sets none
+	std::optional<std::string>          shortName;    // ST-24; nullopt when the entry sets none
 	std::int32_t                        defaultBase = 0;
 	std::map<std::string, std::int32_t> raceAdjustments;  // race editor ID -> adjustment
 	std::map<std::string, Effect>       effects;          // keyed by the effect's name in the file

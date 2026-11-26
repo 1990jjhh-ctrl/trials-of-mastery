@@ -36,7 +36,7 @@ constexpr std::array<std::string_view, 21> kBuiltInActions{ "WeaponSwing", "BowD
 constexpr std::array<std::string_view, 5> kNamedEffectNames{ "CritChancePhysical", "CritChanceMagic", "LearningSpeed",
 	"DamageRedirection", "MagicDamage" };
 
-constexpr std::array<std::string_view, 4> kStatKeys{ "group", "base", "raceAdjustments", "effects" };
+constexpr std::array<std::string_view, 6> kStatKeys{ "group", "displayName", "shortName", "base", "raceAdjustments", "effects" };
 constexpr std::array<std::string_view, 4> kEffectKeys{ "actorValue", "named", "input", "curve" };
 constexpr std::array<std::string_view, 3> kSkillKeys{ "primary", "secondary", "primaryShare" };
 constexpr std::array<std::string_view, 2> kActionKeys{ "check", "training" };
@@ -199,6 +199,8 @@ StatEntry readStat(TableReader& reader, const json& value, const Pointer& path)
 	StatEntry  entry;
 	const auto group = reader.text(reader.field(value, path, "group", false), path / "group");
 	entry.group = group.value_or(std::string(kOtherGroup));
+	entry.displayName = reader.text(reader.field(value, path, "displayName", false), path / "displayName");
+	entry.shortName = reader.text(reader.field(value, path, "shortName", false), path / "shortName");
 	entry.defaultBase = reader.int32(reader.field(value, path, "base", true), path / "base").value_or(0);
 	entry.raceAdjustments = readRaceAdjustments(reader, reader.field(value, path, "raceAdjustments", false), path / "raceAdjustments");
 	entry.effects = readEffects(reader, reader.field(value, path, "effects", false), path / "effects");

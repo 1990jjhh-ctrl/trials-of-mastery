@@ -1,6 +1,8 @@
 {
   "STR": {
     "group": "Warrior",
+    "displayName": "Strength",
+    "shortName": "STR",
     "base": 10,
     "effects": {
       "PhysicalDamage": {
@@ -25,6 +27,8 @@
   },
   "DEX": {
     "group": "Thief",
+    "displayName": "Dexterity",
+    "shortName": "DEX",
     "base": 10,
     "effects": {
       "CritChancePhysical": {
@@ -53,6 +57,8 @@
   },
   "CON": {
     "group": "Warrior",
+    "displayName": "Constitution",
+    "shortName": "CON",
     "base": 10,
     "effects": {
       "Health": {
@@ -113,6 +119,8 @@
   },
   "INT": {
     "group": "Mage",
+    "displayName": "Intelligence",
+    "shortName": "INT",
     "base": 10,
     "effects": {
       "Magicka": {
@@ -147,6 +155,8 @@
   },
   "WIS": {
     "group": "Mage",
+    "displayName": "Wisdom",
+    "shortName": "WIS",
     "base": 10,
     "effects": {
       "MagickaRecovery": {
@@ -171,6 +181,8 @@
   },
   "PER": {
     "group": "Thief",
+    "displayName": "Perception",
+    "shortName": "PER",
     "base": 10,
     "effects": {
       "LearningSpeed": {
@@ -187,6 +199,8 @@
   },
   "END": {
     "group": "Warrior",
+    "displayName": "Endurance",
+    "shortName": "END",
     "base": 10,
     "effects": {
       "Stamina": {
@@ -230,6 +244,8 @@
   },
   "CHA": {
     "group": "Other",
+    "displayName": "Charisma",
+    "shortName": "CHA",
     "base": 10
   }
 }

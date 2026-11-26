@@ -112,6 +112,8 @@ TEST_CASE("tables with the core stats only are valid", "[tables]")
 	CHECK(result->stats.size() == 8);
 	CHECK(result->stats.at(StatId{ "STR" }).defaultBase == 10);
 	CHECK(result->stats.at(StatId{ "STR" }).group == "Other");
+	CHECK_FALSE(result->stats.at(StatId{ "STR" }).displayName);
+	CHECK_FALSE(result->stats.at(StatId{ "STR" }).shortName);
 	CHECK(result->stats.at(StatId{ "STR" }).raceAdjustments.empty());
 	CHECK(result->stats.at(StatId{ "STR" }).effects.empty());
 	CHECK(result->skills.empty());
@@ -122,10 +124,10 @@ TEST_CASE("tables with the core stats only are valid", "[tables]")
 	CHECK(result->placeholders.empty());
 }
 
-TEST_CASE("a stat entry gives its group, base, race adjustments and effects", "[tables]")
+TEST_CASE("a stat entry gives its group, names, base, race adjustments and effects", "[tables]")
 {
 	auto stats = coreStats();
-	stats["CON"] = { { "group", "Warrior" }, { "base", 12 }, { "raceAdjustments", { { "NordRace", 1 } } },
+	stats["CON"] = { { "group", "Warrior" }, { "displayName", "Constitution" }, { "shortName", "CON" }, { "base", 12 }, { "raceAdjustments", { { "NordRace", 1 } } },
 		{ "effects", { { "Health", { { "actorValue", "Health" }, { "curve", kLinear } } },
 						 { "Crit", { { "named", "CritChancePhysical" }, { "curve", kLinear } } },
 						 { "Learning", { { "named", "LearningSpeed" }, { "input", "absolute" }, { "curve", kLinear } } } } } };
@@ -137,6 +139,8 @@ TEST_CASE("a stat entry gives its group, base, race adjustments and effects", "[
 	REQUIRE(result);
 	const auto& con = result->stats.at(StatId{ "CON" });
 	CHECK(con.group == "Warrior");
+	CHECK(con.displayName == "Constitution");
+	CHECK(con.shortName == "CON");
 	CHECK(con.defaultBase == 12);
 	CHECK(con.raceAdjustments == std::map<std::string, std::int32_t>{ { "NordRace", 1 } });
 	REQUIRE(con.effects.size() == 3);
@@ -146,6 +150,43 @@ TEST_CASE("a stat entry gives its group, base, race adjustments and effects", "[
 	CHECK(con.effects.at("Health").input == CurveInput::Relative);
 	CHECK(con.effects.at("Crit").input == CurveInput::Relative);
 	CHECK(con.effects.at("Learning").input == CurveInput::Absolute);
+}
+
+TEST_CASE("a stat entry without a display name or short name loads with them empty", "[tables]")
+{
+	auto stats = coreStats();
+	stats["Luck:LUC"] = { { "base", 0 }, { "shortName", "LUC" } };
+	stats["Mod:AGI"] = { { "base", 0 }, { "displayName", "Agility" } };
+	auto tables = minimal();
+	tables.stats = merge(Table::Stats, { { "_default.json", stats } });
+
+	const auto result = buildTables(tables);
+
+	REQUIRE(result);
+	CHECK_FALSE(result->stats.at(StatId{ "Luck:LUC" }).displayName);
+	CHECK(result->stats.at(StatId{ "Luck:LUC" }).shortName == "LUC");
+	CHECK(result->stats.at(StatId{ "Mod:AGI" }).displayName == "Agility");
+	CHECK_FALSE(result->stats.at(StatId{ "Mod:AGI" }).shortName);
+}
+
+TEST_CASE("a non-text or empty display name or short name skips its file", "[tables][validator]")
+{
+	CHECK(rejection(Table::Stats, "STR", { { "base", 10 }, { "displayName", 1 } }) == "/STR/displayName: must be a non-empty text");
+	CHECK(rejection(Table::Stats, "STR", { { "base", 10 }, { "shortName", "" } }) == "/STR/shortName: must be a non-empty text");
+
+	const auto result = merge(Table::Stats, {
+												{ "_default.json", coreStats() },
+												{ "names.json", { { "STR", { { "displayName", "Might" } } }, { "DEX", { { "shortName", "" } } } } },
+												{ "later.json", { { "CON", { { "shortName", "CON" } } } } },
+											});
+
+	const auto invalid = invalidEntries(result);
+	REQUIRE(invalid.size() == 1);
+	CHECK(invalid[0].file == "names.json");
+	CHECK(invalid[0].key == "/DEX");
+	CHECK(invalid[0].detail == "/DEX/shortName: must be a non-empty text");
+	CHECK_FALSE(result.merged.at("STR").contains("displayName"));
+	CHECK(result.merged.at("CON").at("shortName") == "CON");
 }
 
 TEST_CASE("an integer may be written with a zero fraction", "[tables]")
