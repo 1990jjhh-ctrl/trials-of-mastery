@@ -273,6 +273,11 @@ TEST_CASE("the shipped stats hold the display names and short names of PRD 6", "
 	CHECK(actual == expected);
 }
 
+TEST_CASE("the shipped stat groups are in the order of PRD 7.8", "[tables][data]")
+{
+	CHECK(builtShipped().statGroups == std::vector<std::string>{ "Warrior", "Mage", "Thief", "Other" });
+}
+
 TEST_CASE("the shipped pools come from CON, END and INT (ST-10)", "[tables][data]")
 {
 	const auto tables = builtShipped();

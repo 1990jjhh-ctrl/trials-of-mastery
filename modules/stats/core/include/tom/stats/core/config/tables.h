@@ -116,6 +116,12 @@ struct Tables
 	ActionsTable      actions;
 	IncompatibleTable incompatible;
 
+	// The groups the stats files set, each once, in the order of the first
+	// stat that has it in MergeResult::keyOrder (ST-21; Stats plan,
+	// assumption 17). A group a stat has only from an API registration, or
+	// because its entry names none, is not listed.
+	std::vector<std::string> statGroups;
+
 	// Entries that were dropped on their own (PRD §9): skills and actions
 	// entries that name a stat no layer of the stats table defines, and
 	// entries that are invalid in themselves, which only API registrations

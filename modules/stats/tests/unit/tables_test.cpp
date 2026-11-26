@@ -207,6 +207,41 @@ TEST_CASE("a stat without a group is in its namespace's group, or in Other", "[t
 	CHECK(result->stats.at(StatId{ "STR" }).group == "Other");
 }
 
+TEST_CASE("the stat groups follow the order in which the stats files name their stats", "[tables][groups]")
+{
+	const std::vector<TableSource> sources{
+		{ "_default.json", R"({"STR": {"base": 10, "group": "Warrior"}, "DEX": {"base": 10, "group": "Thief"},
+			"CON": {"base": 10, "group": "Warrior"}, "INT": {"base": 10, "group": "Mage"}, "WIS": {"base": 10},
+			"PER": {"base": 10}, "END": {"base": 10}, "CHA": {"base": 10, "group": "Other"}})" },
+		{ "patch.json", R"({"Mod:Foo": {"base": 0}, "Mod:AGI": {"base": 2}, "Mod:Bar": {"base": 0, "group": "Mage"}})" },
+	};
+	auto tables = minimal();
+	tables.stats = mergeTable(sources, NoPlugins{}, { { "Mod:AGI", { { "base", 0 }, { "group", "Agile" } } } }, entryValidator(Table::Stats));
+
+	const auto result = buildTables(tables);
+
+	REQUIRE(result);
+	CHECK(result->stats.at(StatId{ "Mod:AGI" }).group == "Agile");
+	CHECK(result->statGroups == std::vector<std::string>{ "Warrior", "Thief", "Mage", "Other" });
+}
+
+TEST_CASE("a patch that gives a stat a new group puts the group at the stat's position", "[tables][groups]")
+{
+	const std::vector<TableSource> sources{
+		{ "_default.json", R"({"STR": {"base": 10, "group": "Warrior"}, "DEX": {"base": 10, "group": "Thief"},
+			"CON": {"base": 10, "group": "Warrior"}, "INT": {"base": 10, "group": "Mage"}, "WIS": {"base": 10, "group": "Mage"},
+			"PER": {"base": 10, "group": "Thief"}, "END": {"base": 10}, "CHA": {"base": 10}})" },
+		{ "patch.json", R"({"PER": {"group": "Rogue"}, "DEX": {"group": "Rogue"}})" },
+	};
+	auto tables = minimal();
+	tables.stats = mergeTable(sources, NoPlugins{}, json::object(), entryValidator(Table::Stats));
+
+	const auto result = buildTables(tables);
+
+	REQUIRE(result);
+	CHECK(result->statGroups == std::vector<std::string>{ "Warrior", "Rogue", "Mage" });
+}
+
 TEST_CASE("an integer may be written with a zero fraction", "[tables]")
 {
 	CHECK(rejection(Table::Stats, "STR", { { "base", 10.0 } }).empty());

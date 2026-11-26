@@ -429,6 +429,24 @@ void ignoreUnknownRaces(StatsTable& stats, const MergeResult& merged, const Race
 	}
 }
 
+// The groups the stats files set, in the order the files first name a stat
+// of each (Stats plan, assumption 17).
+std::vector<std::string> statGroups(const StatsTable& stats, const MergeResult& merged)
+{
+	std::vector<std::string> groups;
+	for (const auto& name : merged.keyOrder) {
+		const auto stat = stats.find(StatId{ name });
+		const auto origin = merged.origins.find((Pointer{} / name / "group").to_string());
+		if (stat == stats.end() || origin == merged.origins.end() || origin->second.layer == Layer::Registered) {
+			continue;
+		}
+		if (std::ranges::find(groups, stat->second.group) == groups.end()) {
+			groups.push_back(stat->second.group);
+		}
+	}
+	return groups;
+}
+
 // A core stat without an entry, named with the file that removed it.
 void checkCoreStats(const StatsTable& stats, const MergeResult& merged, std::vector<ConfigError>& errors)
 {
@@ -516,6 +534,7 @@ std::expected<Tables, TablesError> buildTables(const MergedTables& merged, const
 		return std::unexpected(TablesError{ std::move(errors), std::move(tables.dropped) });
 	}
 	ignoreUnknownRaces(tables.stats, merged.stats, races, tables.ignoredRaceAdjustments);
+	tables.statGroups = statGroups(tables.stats, merged.stats);
 
 	tables.skills = readTable<SkillEntry>(Table::Skills, merged.skills, tables.dropped);
 	dropUndefinedStats(tables.skills, Table::Skills, merged.skills, tables.stats, tables.dropped);
