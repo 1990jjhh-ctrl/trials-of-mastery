@@ -192,6 +192,13 @@ public:
 	// adjustments. Fails for an unknown actor.
 	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> setRace(ActorId actor, std::string_view race);
 
+	// Applies the stats table's default base to every active stat of every
+	// actor (ST-3, Stats plan, assumption 11): a default base that a patch
+	// changed since the save moves the base by the difference. For after a
+	// load. Returns the AvDeltas of the actors whose contributions changed;
+	// at multiplier 1 there are none (Stats plan, assumption 13).
+	[[nodiscard]] AvDeltasByActor applyDefaultBases();
+
 	// Forgets what a save holds, for a revert on a new game or a load: the
 	// actors, the pending points and the dormant stats; r goes back to the
 	// value the service was built with. The session state stays (Stats plan,

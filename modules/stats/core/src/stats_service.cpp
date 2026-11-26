@@ -140,6 +140,22 @@ std::expected<std::vector<AvDelta>, Error> StatsService::setRace(ActorId actor, 
 	});
 }
 
+AvDeltasByActor StatsService::applyDefaultBases()
+{
+	const std::vector<StatId> active = registry_.activeStats();
+	AvDeltasByActor           deltas;
+	for (auto& [actor, state] : actors_) {
+		for (const auto& id : active) {
+			applyDefaultBase(state.stats, id, defaultBase(id));
+		}
+		auto changes = updateEffects(state);
+		if (!changes.empty()) {
+			deltas.emplace(actor, std::move(changes));
+		}
+	}
+	return deltas;
+}
+
 void StatsService::resetSaveState()
 {
 	actors_.clear();

@@ -1,5 +1,5 @@
 // The StatsService accessors for a save (Stats plan, C8): actor snapshots,
-// pending points and the reset of the save state.
+// pending points, changed default bases and the reset of the save state.
 #include "tom/stats/core/stats_service.h"
 
 #include "stats_service_fixture.h"
@@ -23,8 +23,10 @@ using tom::stats::FreePoints;
 using tom::stats::initStat;
 using tom::stats::kRaceAdjustmentKey;
 using tom::stats::Settings;
+using tom::stats::StatReading;
 using tom::stats::StatsService;
 using tom::stats::StatValue;
+using tom::stats::Tables;
 
 using namespace service_test;
 
@@ -153,4 +155,47 @@ TEST_CASE("resetting the save state keeps the session state", "[stats_service][s
 	REQUIRE(stats.addActor(kPlayer, "ImperialRace"));
 	CHECK(stats.read(kPlayer, kLuck)->base == 5);
 	CHECK(stats.critChance(kPlayer, CritKind::Physical) == 5.0 + 2.0);
+}
+
+TEST_CASE("a changed default base moves every actor's base and leaves the effects", "[stats_service][save][base]")
+{
+	StatsService saved = service();
+	REQUIRE(saved.addActor(kPlayer, "NordRace"));
+	REQUIRE(saved.addActor(kNpc, "ImperialRace"));
+	REQUIRE(saved.setValues(kPlayer, kEnd, StatValue{ .base = 10, .accumulated = 2, .active = 1, .xp = 0.5 }));
+
+	// A patch raised the default base of CON and END from 10 to 12.
+	Tables patched = tables();
+	patched.stats[kCon].defaultBase = 12;
+	patched.stats[kEnd].defaultBase = 12;
+	StatsService stats(Settings{}, patched, kPlayer);
+	for (const ActorId actor : saved.actorIds()) {
+		const ActorSnapshot snapshot = *saved.actorSnapshot(actor);
+		REQUIRE(stats.restoreActor(actor, snapshot.race, snapshot.stats, snapshot.ledger).empty());
+	}
+	const double learningBefore = *stats.learningBonus(kPlayer);
+
+	// At multiplier 1 base and default base move together (assumption 13).
+	CHECK(stats.applyDefaultBases().empty());
+
+	CHECK(stats.read(kPlayer, kCon)->base == 14);
+	CHECK(stats.read(kPlayer, kEnd) == StatReading{ .base = 12, .accumulated = 2, .active = 1, .xp = 0.5, .effective = 15.0 });
+	CHECK(stats.read(kNpc, kCon)->base == 12);
+	CHECK(stats.read(kNpc, kStr)->base == 10);
+	CHECK(stats.actorSnapshot(kPlayer)->stats.defaultBases.at(kCon) == 12);
+	CHECK(stats.actorSnapshot(kPlayer)->ledger == saved.actorSnapshot(kPlayer)->ledger);
+	CHECK(stats.learningBonus(kPlayer) == learningBefore);
+	// Applying the same default bases again changes nothing.
+	CHECK(stats.applyDefaultBases().empty());
+	CHECK(stats.read(kPlayer, kCon)->base == 14);
+}
+
+TEST_CASE("unchanged default bases change nothing", "[stats_service][save][base]")
+{
+	StatsService stats = service();
+	REQUIRE(stats.addActor(kPlayer, "NordRace"));
+	const ActorSnapshot before = *stats.actorSnapshot(kPlayer);
+
+	CHECK(stats.applyDefaultBases().empty());
+	CHECK(stats.actorSnapshot(kPlayer) == before);
 }
