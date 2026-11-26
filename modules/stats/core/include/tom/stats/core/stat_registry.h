@@ -42,6 +42,10 @@ public:
 	// Its free-point setting comes with the registration that brings it back.
 	void addDormant(const StatId& id);
 
+	// Forgets the dormant stats, e.g. when the saved data they came from is
+	// reverted. Active stats stay.
+	void removeDormant();
+
 	[[nodiscard]] bool contains(const StatId& id) const;
 	[[nodiscard]] bool isCore(const StatId& id) const;
 	[[nodiscard]] bool isDormant(const StatId& id) const;
@@ -52,6 +56,11 @@ public:
 	// The core stats in PRD order, then the registered stats in the order they
 	// were first added. Dormant stats are left out.
 	[[nodiscard]] std::vector<StatId> activeStats() const;
+
+	// The registered stats, dormant ones included, in the order they were
+	// first added; the core stats are left out. These are the registered
+	// stats a save stores (PRD §8, Stats plan, assumption 8).
+	[[nodiscard]] std::vector<StatId> registeredStats() const;
 
 private:
 	struct Entry

@@ -140,3 +140,27 @@ TEST_CASE("an unknown stat gets no free points", "[registry]")
 
 	CHECK_FALSE(registry.getsFreePoints(StatId{ "LUC" }));
 }
+
+TEST_CASE("the registered stats include dormant ones and leave out the core stats", "[registry]")
+{
+	StatRegistry registry;
+	REQUIRE(registry.registerStat(StatId{ "LUC" }));
+	registry.addDormant(StatId{ "FTH" });
+	REQUIRE(registry.registerStat(StatId{ "AGI" }, FreePoints::OptedOut));
+
+	CHECK(registry.registeredStats() == std::vector<StatId>{ StatId{ "LUC" }, StatId{ "FTH" }, StatId{ "AGI" } });
+}
+
+TEST_CASE("removing the dormant stats keeps the active ones", "[registry]")
+{
+	StatRegistry registry;
+	REQUIRE(registry.registerStat(StatId{ "LUC" }, FreePoints::OptedOut));
+	registry.addDormant(StatId{ "FTH" });
+
+	registry.removeDormant();
+
+	CHECK_FALSE(registry.contains(StatId{ "FTH" }));
+	CHECK(registry.registeredStats() == std::vector<StatId>{ StatId{ "LUC" } });
+	CHECK_FALSE(registry.getsFreePoints(StatId{ "LUC" }));
+	CHECK(registry.activeStats().size() == 9);
+}
