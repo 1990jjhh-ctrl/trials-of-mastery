@@ -5,6 +5,7 @@
 #include "tom/stats/core/stat_value.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <expected>
@@ -23,6 +24,13 @@ constexpr std::string_view kOk = "OK";
 constexpr std::string_view kLevelUp = "Level Up";
 constexpr std::string_view kCancel = "Cancel";
 constexpr std::string_view kBack = "Back";
+constexpr std::string_view kNext = "Next";
+
+// A group name and one line, so a page shows at least one line of a section.
+constexpr std::size_t kMinLinesPerPage = 2;
+// The most buttons an overview page needs: "Back", "Level Up", "Cancel" and
+// "Next". It leaves a paged list room for "Back", "Next" and two items.
+constexpr std::size_t kMinButtons = 4;
 
 // The stat box shows whole numbers (ST-24; Stats plan, assumption 17).
 [[nodiscard]] std::string valueText(double value)
@@ -69,13 +77,115 @@ void appendOnce(std::vector<std::string>& groups, const std::string& group)
 {
 	return std::format("Free points: {}", points);
 }
+
+// The number of parts of at most perPart items each that n items need.
+[[nodiscard]] std::size_t partCount(std::size_t n, std::size_t perPart)
+{
+	return (n + perPart - 1) / perPart;
+}
+
+// The items of one part when n items are spread evenly over parts parts: the
+// first n mod parts of them get one item more (Stats plan, assumption 17).
+struct Part
+{
+	std::size_t first = 0;
+	std::size_t size = 0;
+};
+
+[[nodiscard]] Part part(std::size_t n, std::size_t parts, std::size_t index)
+{
+	const std::size_t size = n / parts;
+	const std::size_t longer = n % parts;
+	return Part{ .first = index * size + std::min(index, longer), .size = size + (index < longer ? 1U : 0U) };
+}
+
+// "<title> (<i> / <k>)" for the part with that index of count parts.
+[[nodiscard]] std::string partTitle(std::string_view title, std::size_t index, std::size_t count)
+{
+	return std::format("{} ({} / {})", title, index + 1, count);
+}
+
+// Fills the overview pages with the sections in order (ST-24; Stats plan,
+// assumption 17). Every line counts toward the lines per page, the group
+// names and the empty lines between sections included.
+class OverviewPages
+{
+public:
+	explicit OverviewPages(std::size_t linesPerPage) :
+		linesPerPage_(linesPerPage)
+	{}
+
+	// Adds the section to the current page, or starts a new page when it does
+	// not fit there. A section longer than a page gets pages of its own.
+	void add(std::string_view group, const std::vector<std::string>& lines)
+	{
+		if (lines.size() + 1 > linesPerPage_) {
+			endPage();
+			split(group, lines);
+			return;
+		}
+		if (!current_.empty() && current_.size() + 1 + lines.size() + 1 > linesPerPage_) {
+			endPage();
+		}
+		if (!current_.empty()) {
+			current_.emplace_back();
+		}
+		current_.emplace_back(group);
+		current_.insert(current_.end(), lines.begin(), lines.end());
+	}
+
+	// The text of each page, once the last section is added; one empty page
+	// without sections.
+	[[nodiscard]] std::vector<std::string> texts()
+	{
+		endPage();
+		if (texts_.empty()) {
+			texts_.emplace_back();
+		}
+		return std::move(texts_);
+	}
+
+private:
+	// The section's lines spread evenly over as few pages as hold them under
+	// the group name and its part.
+	void split(std::string_view group, const std::vector<std::string>& lines)
+	{
+		const std::size_t count = partCount(lines.size(), linesPerPage_ - 1);
+		for (std::size_t index = 0; index < count; ++index) {
+			const Part shown = part(lines.size(), count, index);
+			current_.push_back(partTitle(group, index, count));
+			const auto first = lines.begin() + static_cast<std::ptrdiff_t>(shown.first);
+			current_.insert(current_.end(), first, first + static_cast<std::ptrdiff_t>(shown.size));
+			endPage();
+		}
+	}
+
+	void endPage()
+	{
+		if (current_.empty()) {
+			return;
+		}
+		std::string text;
+		for (const std::string& line : current_) {
+			text += line;
+			text += '\n';
+		}
+		text.pop_back();
+		texts_.push_back(std::move(text));
+		current_.clear();
+	}
+
+	std::size_t              linesPerPage_;
+	std::vector<std::string> current_;  // the lines of the page being filled
+	std::vector<std::string> texts_;
+};
 }
 
 StatBoxModel::StatBoxModel(StatsService& service, const Tables& tables, const StatBoxSections& sections,
 	StatBoxLayout layout) :
 	service_(service),
 	tables_(tables),
-	layout_(layout)
+	layout_{ .maxButtons = std::max(layout.maxButtons, kMinButtons), .linesPerPage = std::max(layout.linesPerPage, kMinLinesPerPage) }
 {
 	const std::vector<StatId>      stats = service_.registry().activeStats();
 	const std::vector<std::string> groups = groupsOf(stats);
@@ -106,12 +216,11 @@ PressResult StatBoxModel::press(std::size_t button)
 	}
 	const Action action = std::move(current.actions[button]);
 	if (std::holds_alternative<Close>(action)) {
-		screen_ = Screen::Stats;
+		startOver();
 		return PressResult{ .next = Closed{}, .deltas = {}, .error = std::nullopt };
 	}
 	if (const auto* open = std::get_if<Open>(&action)) {
-		screen_ = open->screen;
-		group_ = open->group;
+		show(*open);
 		return PressResult{ .next = page(), .deltas = {}, .error = std::nullopt };
 	}
 	auto deltas = service_.assignFreePoint(std::get<Assign>(action).stat);
@@ -121,7 +230,7 @@ PressResult StatBoxModel::press(std::size_t button)
 	if (!canAssign()) {
 		// After the last point the box starts over on its first page (ST-21),
 		// also when points become pending again while it is open.
-		screen_ = Screen::Stats;
+		startOver();
 	}
 	return PressResult{ .next = page(), .deltas = std::move(*deltas), .error = std::nullopt };
 }
@@ -151,61 +260,87 @@ StatBoxModel::View StatBoxModel::view() const
 
 StatBoxModel::View StatBoxModel::statsView() const
 {
-	View result;
-	result.page.text = sectionsText();
-	if (!canAssign()) {
-		result.page.buttons.push_back(Button{ std::string(kOk) });
-		result.actions.emplace_back(Close{});
-		return result;
+	std::vector<std::string> texts = overviewTexts();
+	const std::size_t        index = std::min(overviewPage_, texts.size() - 1);
+	View                     result;
+	result.page.text = std::move(texts[index]);
+	if (index > 0) {
+		result.add(kBack, Open{ .screen = Screen::Stats, .group = {}, .page = index - 1 });
 	}
-	result.page.buttons.push_back(Button{ std::string(kLevelUp) });
-	result.actions.emplace_back(Open{ .screen = Screen::LevelUp, .group = {} });
-	result.page.buttons.push_back(Button{ std::string(kCancel) });
-	result.actions.emplace_back(Close{});
+	if (canAssign()) {
+		result.add(kLevelUp, Open{ .screen = Screen::LevelUp, .group = {}, .page = 0 });
+		result.add(kCancel, Close{});
+	} else {
+		result.add(kOk, Close{});
+	}
+	if (index + 1 < texts.size()) {
+		result.add(kNext, Open{ .screen = Screen::Stats, .group = {}, .page = index + 1 });
+	}
 	return result;
 }
 
 StatBoxModel::View StatBoxModel::levelUpView() const
 {
 	std::vector<StatId> stats = assignableStats();
-	const std::string   text = freePointsText(service_.pendingPoints());
 	if (stats.size() + 1 > layout_.maxButtons) {
-		return groupsView(text, stats);
+		return groupsView(stats);
 	}
-	return statsButtons(text, std::move(stats), Open{ .screen = Screen::Stats, .group = {} });
+	return listView(statItems(std::move(stats)), Open{ .screen = Screen::Stats, .group = {}, .page = overviewPage_ },
+		kLevelUp, {});
 }
 
-StatBoxModel::View StatBoxModel::groupsView(std::string text, const std::vector<StatId>& stats) const
+StatBoxModel::View StatBoxModel::groupsView(const std::vector<StatId>& stats) const
 {
-	View result;
-	result.page.text = std::move(text);
-	for (std::string& group : groupsOf(stats)) {
-		result.page.buttons.push_back(Button{ group });
-		result.actions.emplace_back(Open{ .screen = Screen::Group, .group = std::move(group) });
+	View items;
+	for (const std::string& group : groupsOf(stats)) {
+		items.add(group, Open{ .screen = Screen::Group, .group = group, .page = 0 });
 	}
-	result.page.buttons.push_back(Button{ std::string(kBack) });
-	result.actions.emplace_back(Open{ .screen = Screen::Stats, .group = {} });
-	return result;
+	return listView(std::move(items), Open{ .screen = Screen::Stats, .group = {}, .page = overviewPage_ }, kLevelUp,
+		{});
 }
 
 StatBoxModel::View StatBoxModel::groupView() const
 {
 	std::vector<StatId> stats = assignableStats();
 	std::erase_if(stats, [this](const StatId& stat) { return groupOf(stat) != group_; });
-	return statsButtons(std::format("{}\n{}", group_, freePointsText(service_.pendingPoints())), std::move(stats),
-		Open{ .screen = Screen::LevelUp, .group = {} });
+	return listView(statItems(std::move(stats)), Open{ .screen = Screen::LevelUp, .group = {}, .page = levelUpPage_ },
+		group_, group_);
 }
 
-StatBoxModel::View StatBoxModel::statsButtons(std::string text, std::vector<StatId> stats, Open back) const
+StatBoxModel::View StatBoxModel::statItems(std::vector<StatId> stats) const
 {
 	View result;
-	result.page.text = std::move(text);
 	for (StatId& stat : stats) {
-		result.page.buttons.push_back(Button{ statButton(stat) });
-		result.actions.emplace_back(Assign{ std::move(stat) });
+		const std::string text = statButton(stat);
+		result.add(text, Assign{ std::move(stat) });
 	}
-	result.page.buttons.push_back(Button{ std::string(kBack) });
-	result.actions.emplace_back(std::move(back));
+	return result;
+}
+
+StatBoxModel::View StatBoxModel::listView(View items, Open back, std::string_view title,
+	std::string_view unpagedTitle) const
+{
+	// Paged, "Back" and "Next" leave the rest of the box to the items.
+	const std::size_t n = items.actions.size();
+	const std::size_t count = n + 1 > layout_.maxButtons ? partCount(n, layout_.maxButtons - 2) : 1;
+	const std::size_t index = std::min(pageOf(screen_), count - 1);
+	const std::string heading = count > 1 ? partTitle(title, index, count) : std::string(unpagedTitle);
+	const std::string points = freePointsText(service_.pendingPoints());
+
+	View result;
+	result.page.text = heading.empty() ? points : std::format("{}\n{}", heading, points);
+	if (index > 0) {
+		back = Open{ .screen = screen_, .group = group_, .page = index - 1 };
+	}
+	result.add(kBack, std::move(back));
+	const Part shown = part(n, count, index);
+	for (std::size_t item = shown.first; item < shown.first + shown.size; ++item) {
+		result.page.buttons.push_back(std::move(items.page.buttons[item]));
+		result.actions.push_back(std::move(items.actions[item]));
+	}
+	if (index + 1 < count) {
+		result.add(kNext, Open{ .screen = screen_, .group = group_, .page = index + 1 });
+	}
 	return result;
 }
 
@@ -216,21 +351,14 @@ std::vector<StatId> StatBoxModel::assignableStats() const
 	return result;
 }
 
-std::string StatBoxModel::sectionsText() const
+std::vector<std::string> StatBoxModel::overviewTexts() const
 {
 	const std::vector<StatId> stats = service_.registry().activeStats();
-	std::string               text;
+	OverviewPages             pages(layout_.linesPerPage);
 	for (const std::string& group : groupsOf(stats)) {
-		if (!text.empty()) {
-			text += "\n\n";
-		}
-		text += group;
-		for (const std::string& line : sectionLines(group, stats)) {
-			text += '\n';
-			text += line;
-		}
+		pages.add(group, sectionLines(group, stats));
 	}
-	return text;
+	return pages.texts();
 }
 
 std::vector<std::string> StatBoxModel::sectionLines(const std::string& group, const std::vector<StatId>& stats) const
@@ -308,6 +436,44 @@ std::vector<std::string> StatBoxModel::groupsOf(const std::vector<StatId>& stats
 		result.emplace_back(kOtherGroup);
 	}
 	return result;
+}
+
+std::size_t StatBoxModel::pageOf(Screen screen) const
+{
+	switch (screen) {
+	case Screen::LevelUp:
+		return levelUpPage_;
+	case Screen::Group:
+		return groupPage_;
+	case Screen::Stats:
+		break;
+	}
+	return overviewPage_;
+}
+
+void StatBoxModel::show(const Open& open)
+{
+	screen_ = open.screen;
+	group_ = open.group;
+	switch (open.screen) {
+	case Screen::LevelUp:
+		levelUpPage_ = open.page;
+		return;
+	case Screen::Group:
+		groupPage_ = open.page;
+		return;
+	case Screen::Stats:
+		overviewPage_ = open.page;
+		return;
+	}
+}
+
+void StatBoxModel::startOver()
+{
+	screen_ = Screen::Stats;
+	overviewPage_ = 0;
+	levelUpPage_ = 0;
+	groupPage_ = 0;
 }
 
 }

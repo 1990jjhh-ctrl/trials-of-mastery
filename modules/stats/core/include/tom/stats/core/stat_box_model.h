@@ -15,6 +15,8 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -56,7 +58,13 @@ struct PressResult
 // The size of the message boxes that show the pages.
 struct StatBoxLayout
 {
-	std::size_t maxButtons = 0;  // the most buttons one message box can show
+	// The most buttons one message box can show. The model raises it to 4,
+	// the most an overview page needs: "Back", "Level Up", "Cancel", "Next".
+	std::size_t maxButtons = 0;
+	// The most lines of text one message box shows, the INI's LinesPerPage
+	// (ST-24, Settings::statBoxLinesPerPage). The model raises it to 2, a
+	// group name and one line.
+	std::size_t linesPerPage = 0;
 };
 
 // The stat box of the player. It reads every value from the service when it
@@ -69,15 +77,28 @@ struct StatBoxLayout
 // "Intelligence (INT) 12 (40 / 100 XP)". A section whose group is the
 // namespace of a provider in StatBoxSections shows the provider's lines in
 // place of the stat lines (ST-26); the Level Up pages still show its stats.
-// The page closes with "OK", or
+//
+// When the sections need more lines than one box shows, the first page is
+// the first of several (ST-24; Stats plan, assumption 17). Each page holds as
+// many whole sections, in order, as fit; a section longer than a page gets
+// pages of its own, as few as it needs, with its lines spread evenly, each
+// headed "<group> (<i> / <k>)". From the second page on, the first button is
+// "Back" to the previous page, and a page with a following one ends with
+// "Next". Every page closes with "OK", or
 // offers "Level Up" and "Cancel" while free points are pending and no module
 // has claimed point assignment (ST-21, ST-22). "Cancel" closes the box and
 // leaves the points pending. "Level Up" shows the pending points and one
 // button per stat that takes free points (ST-2) with its label and effective
-// value, plus "Back"; each stat button assigns one point, and the last point
+// value, after "Back" to the page "Level Up" was pressed on (Stats plan,
+// assumption 17); each stat button assigns one point, and the last point
 // leads back to the first page. When those stats and "Back" need more buttons
 // than one box has, "Level Up" shows one button per group instead, and each
-// group shows its stats (ST-21).
+// group shows its stats (ST-21). A list of buttons, the groups or one group's
+// stats, that does not fit with "Back" either is split into pages with its
+// buttons spread evenly, each page with "Back" first and, but for the last,
+// "Next" last, its text headed "Level Up (<i> / <k>)" or
+// "<group> (<i> / <k>)" (Stats plan, assumption 17). "Back" on the first
+// page leaves the list, from the second page on it leads to the previous one.
 //
 // Groups come in the order of ST-21: the groups the stats files name except
 // Other, then the other groups in the order of their first active stat, so
@@ -109,7 +130,7 @@ public:
 private:
 	enum class Screen
 	{
-		Stats,    // the first page
+		Stats,    // the overview pages
 		LevelUp,  // the stats to assign a free point to, or their groups
 		Group,    // the stats of one group
 	};
@@ -119,7 +140,8 @@ private:
 	struct Open
 	{
 		Screen      screen;
-		std::string group;  // for Screen::Group
+		std::string group;     // for Screen::Group
+		std::size_t page = 0;  // the index of the screen's page to show
 	};
 	struct Assign
 	{
@@ -132,6 +154,12 @@ private:
 	{
 		Page                page;
 		std::vector<Action> actions;
+
+		void add(std::string_view text, Action action)
+		{
+			page.buttons.push_back(Button{ std::string(text) });
+			actions.push_back(std::move(action));
+		}
 	};
 
 	// The screen to show: the first page once no point is left to assign.
@@ -141,16 +169,22 @@ private:
 	[[nodiscard]] View view() const;
 	[[nodiscard]] View statsView() const;
 	[[nodiscard]] View levelUpView() const;
-	[[nodiscard]] View groupsView(std::string text, const std::vector<StatId>& stats) const;
+	[[nodiscard]] View groupsView(const std::vector<StatId>& stats) const;
 	[[nodiscard]] View groupView() const;
-	// One button per stat, which assigns it a point, then "Back".
-	[[nodiscard]] View statsButtons(std::string text, std::vector<StatId> stats, Open back) const;
+	// One button per stat, which assigns it a point.
+	[[nodiscard]] View statItems(std::vector<StatId> stats) const;
+	// The current page of the list of items on the current screen: "Back",
+	// which opens back from the first page, then the page's items, then
+	// "Next" if a page follows. The text names the free points, under
+	// "<title> (<i> / <k>)" when the list has pages, or else under
+	// unpagedTitle unless it is empty.
+	[[nodiscard]] View listView(View items, Open back, std::string_view title, std::string_view unpagedTitle) const;
 
 	// The active stats that take free points (ST-2).
 	[[nodiscard]] std::vector<StatId> assignableStats() const;
 
-	// The first page's text: the sections of the active stats.
-	[[nodiscard]] std::string sectionsText() const;
+	// The texts of the overview pages: the sections of the active stats.
+	[[nodiscard]] std::vector<std::string> overviewTexts() const;
 	// The provider's lines of the group, or the lines of its stats among
 	// stats.
 	[[nodiscard]] std::vector<std::string> sectionLines(const std::string& group, const std::vector<StatId>& stats) const;
@@ -165,11 +199,21 @@ private:
 	// The groups of the stats, each once, in the order of ST-21.
 	[[nodiscard]] std::vector<std::string> groupsOf(const std::vector<StatId>& stats) const;
 
+	// The index of the screen's page, shown up to its last page.
+	[[nodiscard]] std::size_t pageOf(Screen screen) const;
+	// Shows the page the action opens.
+	void show(const Open& open);
+	// Shows the first overview page.
+	void startOver();
+
 	StatsService& service_;
 	const Tables& tables_;
 	StatBoxLayout layout_;
 	Screen        screen_ = Screen::Stats;
 	std::string   group_;  // the group of Screen::Group
+	std::size_t   overviewPage_ = 0;
+	std::size_t   levelUpPage_ = 0;
+	std::size_t   groupPage_ = 0;
 	// The lines of the sections that a provider filled, by group.
 	std::map<std::string, std::vector<std::string>> providedLines_;
 	std::vector<Error>                              errors_;
