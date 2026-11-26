@@ -333,6 +333,14 @@ public:
 	// an error. Fails for an unknown player.
 	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> trainSkillLevelUp(const std::string& skill, std::int32_t levelReached);
 
+	// Trains the player's stats for the action with its input, e.g. the
+	// weapon weight or the money value (ST-15, ST-16): addXp() of
+	// actionTrainingXp() with the service's tables and XP modifiers, with
+	// the events of addXp(). Leaves out amounts and stats as
+	// trainSkillLevelUp() does. Fails, and changes nothing, for an action
+	// the actions table does not have and for an unknown player.
+	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> applyTraining(const std::string& action, double input);
+
 	// Sets or replaces, or removes, the owner's XP modifier for the skill or
 	// action (ST-17), as XpModifierRegistry::set() and remove() do.
 	// setXpModifier returns false, and changes nothing, for what set()

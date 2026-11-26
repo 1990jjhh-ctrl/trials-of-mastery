@@ -480,6 +480,16 @@ std::expected<std::vector<AvDelta>, Error> StatsService::trainSkillLevelUp(const
 	});
 }
 
+std::expected<std::vector<AvDelta>, Error> StatsService::applyTraining(const std::string& action, double input)
+{
+	if (!tables_.actions.contains(action)) {
+		return rejected(std::format("unknown action '{}'", action));
+	}
+	return findActor(player_).transform([&](ActorState* state) {
+		return train(*state, actionTrainingXp(tables_.actions, xpModifiers_, action, input));
+	});
+}
+
 bool StatsService::setXpModifier(const XpModifierOwner& owner, XpModifierKind kind, const std::string& name, double m)
 {
 	return xpModifiers_.set(owner, kind, name, m);
