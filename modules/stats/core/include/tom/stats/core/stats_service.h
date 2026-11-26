@@ -192,6 +192,13 @@ public:
 	// adjustments. Fails for an unknown actor.
 	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> setRace(ActorId actor, std::string_view race);
 
+	// Forgets what a save holds, for a revert on a new game or a load: the
+	// actors, the pending points and the dormant stats; r goes back to the
+	// value the service was built with. The session state stays (Stats plan,
+	// assumption 16): N, the claims, the active stats, the crit shifts and
+	// the event sink.
+	void resetSaveState();
+
 	[[nodiscard]] bool hasActor(ActorId actor) const;
 
 	// The known actors in ascending order.
@@ -286,6 +293,10 @@ public:
 	// The free points granted and not yet assigned (ST-21).
 	[[nodiscard]] std::int32_t pendingPoints() const { return pendingPoints_; }
 
+	// Puts the saved pending points back (for C8). Fails, and changes
+	// nothing, for a negative count.
+	[[nodiscard]] std::expected<void, Error> restorePendingPoints(std::int32_t points);
+
 	// Moves one pending point into the player's accumulated points of the
 	// stat, so it does not raise the cost (ST-20). Fails, and keeps the point
 	// pending, when none is pending, for an unknown player, for a stat that
@@ -354,6 +365,7 @@ private:
 	std::map<ActorId, ActorState> actors_;
 	ActorId                       player_;
 	double                        r_;
+	double                        initialR_;  // r_ as the constructor set it
 	std::int32_t                  n_;
 	std::int32_t                  freePointsPerLevelUp_;
 	std::set<std::string>         advancingOwners_;

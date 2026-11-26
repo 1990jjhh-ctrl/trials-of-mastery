@@ -58,6 +58,7 @@ StatsService::StatsService(const Settings& settings, Tables tables, ActorId play
 	tables_(std::move(tables)),
 	player_(player),
 	r_(validOrDefault(settings.costGrowth, Settings{}.costGrowth, isValidR)),
+	initialR_(r_),
 	n_(validOrDefault(settings.advanceInterval, Settings{}.advanceInterval, isValidN)),
 	freePointsPerLevelUp_(validOrDefault(settings.freePointsPerLevelUp, Settings{}.freePointsPerLevelUp,
 		[](std::int32_t points) { return points >= 0; }))
@@ -137,6 +138,14 @@ std::expected<std::vector<AvDelta>, Error> StatsService::setRace(ActorId actor, 
 		}
 		return updateEffects(*state);
 	});
+}
+
+void StatsService::resetSaveState()
+{
+	actors_.clear();
+	pendingPoints_ = 0;
+	registry_.removeDormant();
+	r_ = initialR_;
 }
 
 bool StatsService::hasActor(ActorId actor) const
@@ -370,6 +379,15 @@ bool StatsService::claimPointAssignment(const std::string& owner)
 	}
 	pointAssignmentOwners_.insert(owner);
 	return true;
+}
+
+std::expected<void, Error> StatsService::restorePendingPoints(std::int32_t points)
+{
+	if (points < 0) {
+		return rejected(std::format("{} pending points is negative; keeping {}", points, pendingPoints_));
+	}
+	pendingPoints_ = points;
+	return {};
 }
 
 std::expected<std::vector<AvDelta>, Error> StatsService::assignFreePoint(const StatId& stat)
