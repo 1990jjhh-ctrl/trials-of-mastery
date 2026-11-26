@@ -59,6 +59,9 @@ These are the user's answers to the decisions in the first draft of this plan.
 11. **Base adjustments ([ST-3](PRD.md#71-stats)):** an actor's stored base already contains its adjustments, and each adjustment is stored under its key. Setting a key changes the base by the difference to the key's old value; removing a key takes its value off the base. The race adjustment is one such key, owned by the module and not settable through the API. When the stats table's race adjustment for an actor's race differs from the stored one (a patch changed, or the actor changed race), the module sets the key again, so the base and with it the effects change by the difference (ST-3). A changed **default base** reaches existing actors the same way, as ST-3 and [§8](PRD.md#8-constraints) define: each actor stores the default base last applied per stat, and the module moves the base by the difference.
 12. **Effect reference ([ST-9, ST-10](PRD.md#73-effects)):** relative effects measure from the default base last applied to the actor's stat (`ActorStats::defaultBases`, C4), which is the stored form of "default base" for an existing actor. A stat with no default base applied counts it as 0, like any missing value in `ActorStats`; So C7 never gives a stat a non-zero base without `initStat`, and C8 restores the default base last applied together with every base.
 13. **Open: default-base patch at a multiplier other than 1.** ST-3 says a patch that changes a default base leaves relative effects unchanged, since base and default base move together. With `x = effective − default base` and `effective = (base + …) · multiplier + modifier`, a change `d` of both moves `x` by `d · (multiplier − 1)`, so this holds only at multiplier 1. The plan checks it at multiplier 1 only and does not settle the other case; it is for the user to decide in the PRD (ST-3, ST-8, MA-3).
+14. **Tables fixed at construction (constraint, from C7):** `StatsService` takes its `Tables` in the constructor and never changes them, and `registerStat` fails for a stat without a stats-table entry, since the default base comes from there (ST-3). So every table entry, the API-registered ones included (A1, the luck module's LUC per [LU-1](../luck/PRD.md)), is merged and passed to `buildTables` before the service is built; G1 builds it after that, then calls `registerStat` for each registered stat. `registerStat` on a built service only activates a stat whose entry is already in the tables; a stat whose entry arrives later cannot be added in that session.
+15. **Threads (to settle in G1, before the first hook task):** `StatsService` has no locking. Its copy-on-write crit shifts (C7) protect only against re-entry on one thread: a shift that sets or removes shifts while `critChance` runs. Two threads calling the service at once are a data race. G1 sets the rule for the whole plugin, which each hook task, A1 and A2 follow: which threads may call the service, and how a hook that runs on another thread reaches it (a deferred call through the SKSE task interface, `SKSE::GetTaskInterface()->AddTask`, a lock in the plugin around the service, or a value cached on the main thread). A hook that needs a value at once, inside the game's own computation (G6 skill XP factor, G7 split, G8 crit chance, G10 check), cannot be deferred, so the rule must cover it. The PRD says nothing on threads; nothing about it is visible to the player, so it is a design choice for G1, not an open PRD question.
+16. **N and claims are session state (user decision, 2026-11-26):** as [§8](PRD.md#8-constraints) has it, a save stores `r` but neither N nor the claims of advancing (ST-6) and point assignment (ST-22). N comes from the INI each session, so a changed N applies to existing saves, and a claiming module (the mastery module) sets it again through the API. The claiming module also claims again each session. So C8 stores neither, and a revert keeps both, like crit shifts and XP modifiers.
 
 ## Tasks
 
@@ -294,18 +297,50 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - unspent points stay pending;
   - `assignFreePoint` on an opted-out registered stat is rejected and leaves the points pending; the stat still gains XP and points from training.
 - **Depends on:** C4, C5, C5a, C6.
+- **Not in C7:** the XP modifiers, training and check operations of C6 (C7a), the read and restore accessors for persistence and `applyDefaultBases` (C8). The service builds on fixed tables (assumption 14) and is not thread-safe (assumption 15).
+
+#### C7a Training, checks and XP modifiers in the stats service (C7 amendment)
+
+- **Goal:** put the C6 functions behind `StatsService`, so the game layer and the API reach them only through the facade, as C7 and A1 require.
+- **Covers:** ST-14, ST-15 (training and checks), ST-16 (registered mappings and actions), ST-17.
+- **Scope:** `modules/stats/core/include/tom/stats/core/stats_service.h`, `modules/stats/core/src/stats_service.cpp` and the service's unit tests.
+- **Interfaces** (`StatsService`; names may follow the existing style):
+  - The service owns an `XpModifierRegistry`. `setXpModifier(owner, XpModifierKind, name, m) -> bool` and `removeXpModifier(owner, XpModifierKind, name)` pass on to it; `set` rejects what `XpModifierRegistry::set` rejects (ST-17).
+  - `skillXpFactor(skill) -> double`: the `XpModifierKind::SkillXp` factor, which G6 multiplies with `learningBonus` and the game's own bonuses (ST-12, ST-17).
+  - `trainSkillLevelUp(skill, levelReached) -> expected<vector<AvDelta>, Error>`: `skillLevelUpXp` with the service's tables and modifiers, then `addXp` to the player for each entry, with the `xpGained` and `pointGained` events of `addXp`. An unmapped skill gives no XP and no error (ST-16). G4 calls it.
+  - `applyTraining(action, input) -> expected<vector<AvDelta>, Error>`: the same over `actionTrainingXp` (ST-15). G9a to G9c and the API's mod actions (G9d) call it. It fails for an action the actions table does not have.
+  - `checkValue(actor, action, SkillLevels) -> expected<double, Error>` and `checkResult(action, i) -> expected<double, Error>` over C6's functions, failing where those return `nullopt` and for an unknown actor. `checkValue` sees only the active stats: a dormant stat's term is evaluated as for a stat the actor does not have (assumption 8).
+  - Amounts that `addXp` ignores (not positive or not finite) are left out without an error, as C6 documents.
+- **Verification:** `unit` tests check that:
+  - a skill level-up through the service adds the C6 split to the player's stats and sends the events of `addXp`; an unmapped skill changes nothing;
+  - XP modifiers set through the service change the XP of the next level-up and action, and removing them restores it; a modifier below −100 % is rejected;
+  - `skillXpFactor` is 1 without modifiers and the product of `1 + m` with two owners (assumption 4);
+  - `applyTraining` on an unknown action fails and changes nothing;
+  - `checkValue` and `checkResult` match the C6 functions for the player and an NPC, fail for an unknown action, an action without a check and an unknown actor, and leave a dormant stat's value out.
+- **Depends on:** C7. Not parallel with C8 (both change `stats_service.h` and `.cpp`); either may go first. **Parallel** with C9.
 
 #### C8 Persistence format
 
 - **Goal:** serialize and deserialize the full service state to versioned bytes, independent of the SKSE co-save.
 - **Covers:** [§8 persistence constraint](PRD.md#8-constraints), success criterion 3 (format).
 - **Interfaces:** `serialize(const StatsService&) -> bytes`, `deserialize(bytes, ActorIdResolver&) -> expected<State>`. `ActorIdResolver` maps saved actor IDs to current ones (FormID remap) or drops them. The format has a version field.
+  - `restore(StatsService&, State) -> AvDeltasByActor` puts a `State` into the service: `resetSaveState`, then `addDormantStat` for each saved registered stat that is not active, `setR`, `restorePendingPoints`, and `restoreActor` for each actor. A saved `r` that `setR` rejects keeps the value from the settings and is logged. N is not touched (assumption 16).
+  - Read and restore accessors on `StatsService` (C7 has `restoreActor`, `pendingPoints`, `r` and `n`, but nothing to read the actors):
+    - `actorIds() -> vector<ActorId>` and `actorSnapshot(ActorId) -> expected<ActorSnapshot, Error>`, where `ActorSnapshot` holds the actor's stored race editor ID, `ActorStats` and `ContributionLedger`, the same three that `restoreActor` takes;
+    - `restorePendingPoints(int32)`, failing for a negative count;
+    - `StatRegistry::registeredStats()`: the registered stats, dormant ones included, so dormant stats are saved again (assumption 8, [§8](PRD.md#8-constraints) "registered stats"); and a way to drop the dormant stats on a revert;
+    - `resetSaveState()`, for G2's revert on a new game or load: forgets the actors, the pending points and the dormant stats, and resets `r` to the service's construction value. It keeps the session state: N as the INI or a claiming module set it, the claims (assumption 16), the active registered stats, crit shifts, XP modifiers (C7a) and the event sink.
+  - `applyDefaultBases() -> AvDeltasByActor`: `applyDefaultBase` (C4) for every actor and every active stat, with the default base of the stats table, so a patch that changed a default base moves the bases by the difference (ST-3, assumption 11). G2 calls it after a load. C7 has no such operation.
+  - N, the claims and the per-session registrations (crit shifts, XP modifiers) are not in the format (assumption 16).
 - **Verification:** `unit` tests check that:
-  - all persisted fields of §8 round-trip, including base adjustments per key, the default base last applied per actor and stat, dormant stats and N; there is no start value to store (C5a);
+  - all persisted fields of §8 round-trip, including base adjustments per key, the default base last applied per actor and stat, and dormant stats; there is no start value to store (C5a);
   - a restored stat with a base always has its default base last applied restored with it, so its effects keep their reference (assumption 12);
   - unresolved actors are dropped and logged;
-  - an older format version is either read or rejected explicitly.
-- **Depends on:** C7.
+  - an older format version is either read or rejected explicitly;
+  - `serialize`, `deserialize` and `restore` into a new service built from the same tables give the same `actorSnapshot` per actor, the same pending points, `r` and dormant stats, and no `AvDelta`s; N stays as the new service has it;
+  - `resetSaveState` leaves no actor and no pending point, resets `r`, and keeps N, the active registered stats, crit shifts, XP modifiers and claims;
+  - after a change of a stat's default base in the tables, `applyDefaultBases` moves each actor's base by the difference and leaves the relative effects unchanged at multiplier 1 (assumption 13).
+- **Depends on:** C7. Not parallel with C7a (shared files).
 
 #### C9 Stat box model
 
@@ -313,7 +348,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 - **Covers:** ST-2 (opt-out in the box), ST-21, ST-22, ST-24 (content and flow).
 - **Interfaces:** `StatBoxModel(service, maxButtons)`. `Page { text; vector<Button> }`. `press(buttonIndex) -> Page | Closed`.
 - **Verification:** `unit` tests for every page transition in ST-21 and ST-22, for group pages when the stats plus "Back" exceed `maxButtons`, and for registered stats without a group landing in Other. A registered stat opted out of free points (ST-2) shows on the info page but not on the "Level Up" pages, and a group left without stats there is not shown (ST-21).
-- **Depends on:** C7. **Parallel** with C8.
+- **Depends on:** C7. **Parallel** with C8 and C7a.
 
 ### Phase 3: Spikes (uncertain game hooks)
 
@@ -374,6 +409,8 @@ Not covered:
 - **Goal:** load the INI and the four tables at `kDataLoaded`, with a `PluginQuery` backed by the game's loaded-plugin list.
 - **Covers:** ST-3, ST-27, ST-28 (the table is loaded here; K1 acts on it).
 - **Interfaces:** uses C2, C3, C7. A game `PluginQuery` adapter, and the editor IDs of all loaded `RE::TESRace` forms for `buildTables` (C3).
+  - Builds the one `StatsService` at `kDataLoaded`, in this order (assumption 14): merge the JSON layers with the API-registered layer, `buildTables`, construct the service, then `registerStat` for each API-registered stat with its free-point setting. Until A1 exists, the registered layer is empty.
+  - Sets the thread rule of assumption 15 and writes it into the plugin code where the service is held, so the hook tasks, A1 and A2 can follow it.
 - **Verification:** `log`. The log lists file order, conflicts, same-name warnings, skipped files and each `TODO(OQ-n)` placeholder in use. A plain test patch and a mod patch in `plugins/` for an inactive plugin behave as C2 specifies.
 - **Depends on:** T1.2, C3, C7.
 
@@ -383,6 +420,7 @@ Not covered:
 - **Covers:** ST-3 (race adjustment and default base at load), ST-4, [§8](PRD.md#8-constraints), success criterion 3.
 - **Interfaces:** SKSE serialization callbacks (save, load, revert) with a unique ID and record types. The `ActorIdResolver` uses the SKSE FormID resolution. NPC defaults are the default base plus the race adjustment until the API sets values (**placeholder, depends on OQ-1**).
   - Base adjustments are persisted per key ([§8](PRD.md#8-constraints)). After a load, the race key of each actor is set again from the stats table (assumption 11), and so is the player's when the race changes; a race whose editor ID has no entry, or whose entry C3 ignored, gets no adjustment. Next to it, `applyDefaultBase` (C4) applies each stat's current default base, so a patch that changed it moves the base by the difference ([ST-3](PRD.md#71-stats)). A new game's `initStat` with a race adjustment changes the pools from creation on (ST-10); G3 applies those deltas. Which game event reports a race change is to be found in this task.
+  - Service calls: after a load, C8's `restore`, then `setRace` for every actor with its current race and `applyDefaultBases` (C8); on the player's race change, `setRace`; on revert, `resetSaveState` (C8). `setRace` exists since C7; `applyDefaultBases`, `resetSaveState` and the accessors `restore` needs come with C8.
 - **Verification:**
   - `in-game`: values survive save, quit and load, including a base adjustment set through the API; a new game resets them; going from a save without the plugin and back does not crash; a patch that changes the player's race adjustment moves the base and the pools by the difference at the next load; a patch that changes a stat's default base moves the base and leaves the pools unchanged (at multiplier 1, assumption 13); a new character of a race with an adjustment starts with pools changed by `curve(adjustment) − curve(0)`.
   - `log`: the record versions and the actor count are logged at load.
@@ -402,9 +440,9 @@ Not covered:
 
 - **Goal:** turn skill level-ups into stat XP.
 - **Covers:** ST-14, ST-16, ST-17 (stat XP per skill).
-- **Interfaces:** a skill-increase event sink feeding `StatsService`. The CSF path follows the S7 result.
+- **Interfaces:** a skill-increase event sink calling `StatsService::trainSkillLevelUp` (C7a). The CSF path follows the S7 result. The sink records which thread the event arrives on and follows G1's thread rule (assumption 15).
 - **Verification:** `in-game` plus `log`. `advskill` on One-Handed logs the split; a skill level above 100 trains; an unmapped skill gives nothing.
-- **Depends on:** G1, S7. The split depends on OQ-3.
+- **Depends on:** G1, S7, C7a. The split depends on OQ-3.
 
 #### G5 Level-up handling
 
@@ -424,16 +462,18 @@ Not covered:
 
 - **Goal:** multiply skill XP by the capped learning bonus from C5, the other skill XP bonuses and the per-skill modifiers, as ST-12 and ST-17 define.
 - **Covers:** ST-12, ST-17 (skill XP).
+- **Interfaces:** the S3 hook multiplies by `1 + learningBonus` (C7) and `skillXpFactor` (C7a). It needs the factor inside the game's XP computation, so it follows G1's thread rule for values needed at once (assumption 15).
 - **Verification:** `in-game` plus `log`:
   - the logged skill XP gain changes by the expected factor;
   - with a Guardian Stone active, the gain is the product of both bonuses;
   - with the stats at the curve limit, the stat factor is ×3 at most, and outside bonuses still apply on top.
-- **Depends on:** S3, G1. The curve depends on OQ-4.
+- **Depends on:** S3, G1, C7a. The curve depends on OQ-4.
 
 #### G7 END damage redirection
 
 - **Goal:** redirect the END share of incoming damage into Stamina or Magicka per the C5 split.
 - **Covers:** ST-11.
+- **Interfaces:** the S4 hook reads `damageRedirectionShare` (C7) inside the game's damage computation, records which thread it runs on and follows G1's thread rule for values needed at once (assumption 15).
 - **Verification:** `in-game` plus `log`. With full, partial and empty pools, the logged split matches C5.
 - **Depends on:** S4, G3. The share depends on OQ-6.
 
@@ -443,6 +483,7 @@ Not covered:
 - **Covers:** ST-13.
 - **Notes:**
   - The default crit effects are absolute (C5a), so the chance follows the effective stat, not its distance to the default base.
+  - The S5 hook calls `critChance` (C7) inside the hit computation, records which thread it runs on and follows G1's thread rule for values needed at once (assumption 15). The crit shifts of other modules run on that thread too, which A1 documents.
   - `critChance` can be infinite or NaN (a curve or a shift from another module). G8 does not hand such a value to the game: it falls back to the base crit chance, or to no crit if that is not finite either, and logs it. Whether to also clamp to [0, 100 %] is for the user.
   - The crit chance's unit (fraction or percent, and how it maps to the game's crit value) is part of OQ-2. G8 does not pick it silently: it is raised with the user before G8 starts, and the placeholder curve's `TODO(OQ-2)` names it.
 - **Verification:**
@@ -459,12 +500,13 @@ These are three tasks with no shared files, all after S6a and G1, each **paralle
 - **G9c Social:** trade by money value, persuasion and intimidation by target, normal interactions.
 - **G9d Mod actions:** the shared `applyTraining` entry for API-registered actions (ST-16). It needs no hook. A1 wires it up.
 - **Covers:** ST-15 (training), ST-16, ST-17 (stat XP per action).
+- **Interfaces:** every action calls `StatsService::applyTraining` (C7a). Each hook records which thread it runs on and follows G1's thread rule (assumption 15).
 - **Verification:** `in-game` plus `log`. Each action logs its XP, and the ST-15 example values (dagger, Stendarr's Hammer, 100 septims) come out.
-- **Depends on:** XP amounts depend on OQ-7; G9a's unarmed STR XP by glove weight depends on OQ-9 and its fighting PER XP on OQ-10.
+- **Depends on:** C7a. XP amounts depend on OQ-7; G9a's unarmed STR XP by glove weight depends on OQ-9 and its fighting PER XP on OQ-10.
 
 #### G10 Action checks
 
-Three tasks, all after S6b and C6, each **parallel**:
+Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsService::checkValue` and `checkResult` (C7a) inside the game's own computation, records which thread it runs on and follows G1's thread rule for values needed at once (assumption 15):
 
 - **G10a:** lockpicking and pickpocket.
 - **G10b:** sneak and detection.
@@ -506,12 +548,12 @@ Three tasks, all after S6b and C6, each **parallel**:
 - **Scope:** `modules/stats/include/tom/stats/api.h` (header only, no CommonLib types beyond forward-declared actors) and the plugin-side implementation.
 - **Interfaces:**
   - An interface struct with a version number, handed out through the SKSE messaging interface on request.
-  - Its functions map one to one onto `StatsService`, except `onPlayerLevelUp`, which G5 alone calls and the API does not expose (ST-18). Event callbacks are registered per event type.
-  - Registrations are accepted until `kDataLoaded` and merged per assumption 3. Each registered table entry (stat, skill mapping, action) first runs through the C3 validator of its table; an entry invalid in itself (a wrong type, a missing field, an unknown curve) is rejected, the call returns an error and the rejection is logged ([§9](PRD.md#9-risks)). An entry that names an undefined stat is accepted here and dropped by `buildTables` like any other (C3).
-  - Calls are allowed only on the main thread, and the header documents this.
+  - Its functions map one to one onto `StatsService`, except `onPlayerLevelUp`, which G5 alone calls and the API does not expose (ST-18). Event callbacks are registered per event type. The XP modifiers, the training of mod actions (G9d) and the check values are the C7a operations; C7 alone does not have them.
+  - Registrations are accepted until `kDataLoaded` and merged per assumption 3. They are not service calls: the service does not exist before `kDataLoaded`, and its tables are fixed once it does (assumption 14). A1 collects each registered table entry, and for a stat its free-point setting (ST-2), and hands them to G1, which merges them before `buildTables` and then calls `registerStat`. So the interface struct must be obtainable before `kDataLoaded`, for example at `kPostPostLoad`, and a registration after `kDataLoaded` fails with an error. Each registered table entry (stat, skill mapping, action) first runs through the C3 validator of its table; an entry invalid in itself (a wrong type, a missing field, an unknown curve) is rejected, the call returns an error and the rejection is logged ([§9](PRD.md#9-risks)). An entry that names an undefined stat is accepted here and dropped by `buildTables` like any other (C3).
+  - Calls are allowed only on the main thread, and the header documents this. It also documents G1's thread rule (assumption 15) where it reaches API users: a crit shift is called on the thread of G8's hook, and an event callback on the thread that made the change.
   - `ActorStats` carries no actor identity, but a crit shift ([LU-7](../luck/PRD.md)) needs the actor to read its LUC and favour. A1 hands the luck module the actor: either a reverse lookup from `ActorStats` to the actor in the plugin, or an opaque actor view passed to the shift instead of `ActorStats`. Which one is decided in A1; the second changes C5's `CritShift` signature.
 - **Verification:** `unit` for the version check and argument validation in the core part, including a registered entry that its C3 validator rejects: the call fails, the rejection is logged and the entry does not reach the merge; a registered skill mapping naming an undefined stat is accepted and later dropped by `buildTables`. A3 does the end-to-end check.
-- **Depends on:** C7, G1.
+- **Depends on:** C7, C7a, G1.
 
 #### A2 Papyrus API
 
@@ -522,6 +564,7 @@ Three tasks, all after S6b and C6, each **parallel**:
   - Global native functions that mirror A1, with stats addressed by name, except the crit shift registration, which is C++ only (ST-26).
   - Ascend takes a curve name and parameters and passes them on to the C++ ascend.
   - Events are delivered as SKSE mod events with documented names and arguments.
+  - Natives that call the service follow G1's thread rule (assumption 15). `RE::BSScript::IVirtualMachine::RegisterFunction` takes `a_callableFromTasklets`, `false` by default, which makes a native wait for the next frame instead of running at once on a script thread; A2 keeps that default for them unless the rule allows otherwise.
 - **Verification:** `in-game`. `cgf` calls read and change values, a test script receives each event, and `Papyrus.0.log` shows no stack dumps.
 - **Depends on:** S8, A1.
 
@@ -554,10 +597,10 @@ Three tasks, all after S6b and C6, each **parallel**:
 
 ### Order and parallelism
 
-- Sequential path: T1.1, then C4 and C1 and C2, then C3, C5, C5a, C6, C7, C8, G1, G2, G3, G5, U1, A1, A2, A3, K1, V1.
+- Sequential path: T1.1, then C4 and C1 and C2, then C3, C5, C5a, C6, C7, C8, C7a, G1, G2, G3, G5, U1, A1, A2, A3, K1, V1.
 - Parallel tracks:
   - T1.2 and the spikes S1 to S8 run alongside Phase 2. S8 waits on the Wine Mono user action.
-  - C1, C2 and C4 run in parallel, and so do C8 and C9.
+  - C1, C2 and C4 run in parallel. C9 runs in parallel with C8 and C7a; C8 and C7a share the service files, so they run one after the other, in either order.
   - G6, G7, G8, G9a to G9c and G10a to G10c run in parallel once their spike and G1 or G3 are done.
 
 ## Risks
