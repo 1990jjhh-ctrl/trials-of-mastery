@@ -13,6 +13,8 @@ struct StatValue
 	std::int32_t accumulated = 0;
 	std::int32_t active = 0;
 	double       xp = 0.0;
+
+	bool operator==(const StatValue&) const = default;
 };
 
 struct GainResult

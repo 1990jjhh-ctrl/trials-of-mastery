@@ -58,6 +58,7 @@ StatsService::StatsService(const Settings& settings, Tables tables, ActorId play
 	tables_(std::move(tables)),
 	player_(player),
 	r_(validOrDefault(settings.costGrowth, Settings{}.costGrowth, isValidR)),
+	initialR_(r_),
 	n_(validOrDefault(settings.advanceInterval, Settings{}.advanceInterval, isValidN)),
 	freePointsPerLevelUp_(validOrDefault(settings.freePointsPerLevelUp, Settings{}.freePointsPerLevelUp,
 		[](std::int32_t points) { return points >= 0; }))
@@ -139,9 +140,50 @@ std::expected<std::vector<AvDelta>, Error> StatsService::setRace(ActorId actor, 
 	});
 }
 
+AvDeltasByActor StatsService::applyDefaultBases()
+{
+	const std::vector<StatId> active = registry_.activeStats();
+	AvDeltasByActor           deltas;
+	for (auto& [actor, state] : actors_) {
+		for (const auto& id : active) {
+			applyDefaultBase(state.stats, id, defaultBase(id));
+		}
+		auto changes = updateEffects(state);
+		if (!changes.empty()) {
+			deltas.emplace(actor, std::move(changes));
+		}
+	}
+	return deltas;
+}
+
+void StatsService::resetSaveState()
+{
+	actors_.clear();
+	pendingPoints_ = 0;
+	registry_.removeDormant();
+	r_ = initialR_;
+}
+
 bool StatsService::hasActor(ActorId actor) const
 {
 	return actors_.contains(actor);
+}
+
+std::vector<ActorId> StatsService::actorIds() const
+{
+	std::vector<ActorId> ids;
+	ids.reserve(actors_.size());
+	for (const auto& [actor, state] : actors_) {
+		ids.push_back(actor);
+	}
+	return ids;
+}
+
+std::expected<ActorSnapshot, Error> StatsService::actorSnapshot(ActorId actor) const
+{
+	return findActor(actor).transform([](const ActorState* state) {
+		return ActorSnapshot{ .race = state->race, .stats = state->stats, .ledger = state->ledger };
+	});
 }
 
 std::expected<StatReading, Error> StatsService::read(ActorId actor, const StatId& stat) const
@@ -353,6 +395,15 @@ bool StatsService::claimPointAssignment(const std::string& owner)
 	}
 	pointAssignmentOwners_.insert(owner);
 	return true;
+}
+
+std::expected<void, Error> StatsService::restorePendingPoints(std::int32_t points)
+{
+	if (points < 0) {
+		return rejected(std::format("{} pending points is negative; keeping {}", points, pendingPoints_));
+	}
+	pendingPoints_ = points;
+	return {};
 }
 
 std::expected<std::vector<AvDelta>, Error> StatsService::assignFreePoint(const StatId& stat)

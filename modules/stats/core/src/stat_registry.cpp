@@ -54,6 +54,11 @@ void StatRegistry::addDormant(const StatId& id)
 	entries_.push_back(Entry{ .id = id, .core = false, .dormant = true, .freePoints = FreePoints::Granted });
 }
 
+void StatRegistry::removeDormant()
+{
+	std::erase_if(entries_, [](const Entry& entry) { return entry.dormant; });
+}
+
 bool StatRegistry::contains(const StatId& id) const
 {
 	return findIn(entries_, id) != nullptr;
@@ -83,6 +88,17 @@ std::vector<StatId> StatRegistry::activeStats() const
 	result.reserve(entries_.size());
 	for (const auto& entry : entries_) {
 		if (!entry.dormant) {
+			result.push_back(entry.id);
+		}
+	}
+	return result;
+}
+
+std::vector<StatId> StatRegistry::registeredStats() const
+{
+	std::vector<StatId> result;
+	for (const auto& entry : entries_) {
+		if (!entry.core) {
 			result.push_back(entry.id);
 		}
 	}
