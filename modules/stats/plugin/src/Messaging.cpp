@@ -1,6 +1,7 @@
 #include "Messaging.h"
 
 #include "LevelUpHook.h"
+#include "StatBoxSpike.h"
 
 #include <cstdint>
 #include <string_view>
@@ -44,6 +45,7 @@ void onMessage(Messaging::Message* message)
 		return;
 	}
 	registerLevelUpDiagnostics();
+	registerStatBoxSpike();
 	if (!installLevelUpHook()) {
 		SKSE::log::error("The vanilla LevelUp menu is not replaced");
 	}
