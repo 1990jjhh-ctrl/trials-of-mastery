@@ -7,6 +7,7 @@
 #include "tom/stats/core/actor_stats.h"
 #include "tom/stats/core/effects.h"
 #include "tom/stats/core/stat_value.h"
+#include "tom/stats/core/xp_modifiers.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -27,6 +28,7 @@ using tom::stats::StatReading;
 using tom::stats::StatsService;
 using tom::stats::StatValue;
 using tom::stats::Tables;
+using tom::stats::XpModifierKind;
 
 using namespace service_test;
 
@@ -141,10 +143,12 @@ TEST_CASE("resetting the save state keeps the session state", "[stats_service][s
 	REQUIRE(stats.claimPointAssignment("Mastery"));
 	const auto shift = [](const ActorStats&, CritKind, double) { return 2.0; };
 	REQUIRE(stats.setCritShift("Luck", shift));
+	REQUIRE(stats.setXpModifier("Professions", XpModifierKind::SkillXp, "Smithing", 0.5));
 
 	stats.resetSaveState();
 
 	CHECK(stats.n() == 3);
+	CHECK(stats.skillXpFactor("Smithing") == 1.5);
 	CHECK(stats.advancingClaimed());
 	CHECK(stats.pointAssignmentClaimed());
 	CHECK(stats.registry().registeredStats() == std::vector<StatId>{ kLuck });

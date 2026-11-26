@@ -11,6 +11,7 @@
 #include "tom/stats/core/error.h"
 #include "tom/stats/core/stat_registry.h"
 #include "tom/stats/core/stat_value.h"
+#include "tom/stats/core/xp_modifiers.h"
 
 #include <cstdint>
 #include <expected>
@@ -202,8 +203,8 @@ public:
 	// Forgets what a save holds, for a revert on a new game or a load: the
 	// actors, the pending points and the dormant stats; r goes back to the
 	// value the service was built with. The session state stays (Stats plan,
-	// assumption 16): N, the claims, the active stats, the crit shifts and
-	// the event sink.
+	// assumption 16): N, the claims, the active stats, the crit shifts, the
+	// XP modifiers and the event sink.
 	void resetSaveState();
 
 	[[nodiscard]] bool hasActor(ActorId actor) const;
@@ -323,6 +324,19 @@ public:
 	// an unknown actor.
 	[[nodiscard]] std::expected<double, Error> critChance(ActorId actor, CritKind kind) const;
 
+	// Sets or replaces, or removes, the owner's XP modifier for the skill or
+	// action (ST-17), as XpModifierRegistry::set() and remove() do.
+	// setXpModifier returns false, and changes nothing, for what set()
+	// rejects: an empty owner or name, or m below -1 or not finite.
+	[[nodiscard]] bool setXpModifier(const XpModifierOwner& owner, XpModifierKind kind, const std::string& name,
+		double m);
+	void               removeXpModifier(const XpModifierOwner& owner, XpModifierKind kind, const std::string& name);
+
+	// The factor of the XP modifiers on the skill's own XP (ST-17), 1 without
+	// any. The game layer multiplies it with learningBonus() and the game's
+	// own bonuses (ST-12).
+	[[nodiscard]] double skillXpFactor(std::string_view skill) const;
+
 private:
 	struct ActorState
 	{
@@ -379,6 +393,7 @@ private:
 	std::set<std::string>         pointAssignmentOwners_;
 	std::int32_t                  pendingPoints_ = 0;
 	EventSink*                    events_ = nullptr;
+	XpModifierRegistry            xpModifiers_;
 	// Replaced, never changed, so a running critChance() keeps its own.
 	std::shared_ptr<const CritShiftRegistry> critShifts_ = std::make_shared<const CritShiftRegistry>();
 };

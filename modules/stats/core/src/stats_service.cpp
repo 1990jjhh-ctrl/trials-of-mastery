@@ -453,6 +453,21 @@ std::expected<double, Error> StatsService::critChance(ActorId actor, CritKind ki
 	});
 }
 
+bool StatsService::setXpModifier(const XpModifierOwner& owner, XpModifierKind kind, const std::string& name, double m)
+{
+	return xpModifiers_.set(owner, kind, name, m);
+}
+
+void StatsService::removeXpModifier(const XpModifierOwner& owner, XpModifierKind kind, const std::string& name)
+{
+	xpModifiers_.remove(owner, kind, name);
+}
+
+double StatsService::skillXpFactor(std::string_view skill) const
+{
+	return xpModifiers_.factor(XpModifierKind::SkillXp, skill);
+}
+
 std::int32_t StatsService::defaultBase(const StatId& stat) const
 {
 	const auto it = tables_.stats.find(stat);
