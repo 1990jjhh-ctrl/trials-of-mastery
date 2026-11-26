@@ -74,6 +74,34 @@ StatAdvancedEvent StatsService::advanceStat(ActorId actor, ActorState& state, co
 	return StatAdvancedEvent{ .actor = actor, .stat = stat, .points = points };
 }
 
+std::vector<AvDelta> StatsService::train(ActorState& player, const std::vector<StatXp>& gains)
+{
+	struct Gain
+	{
+		const StatXp* xp = nullptr;
+		std::int32_t  points = 0;
+	};
+	std::vector<Gain> applied;
+	applied.reserve(gains.size());
+	for (const auto& gain : gains) {
+		if (!std::isfinite(gain.xp) || gain.xp <= 0.0 || !checkActive(gain.stat)) {
+			continue;
+		}
+		const GainResult result = tom::stats::addXp(player.stats.values[gain.stat], gain.xp, r_);
+		applied.push_back(Gain{ .xp = &gain, .points = result.points });
+	}
+	auto deltas = updateEffects(player);
+
+	// A receiver may change the service, so the events use player no more.
+	for (const auto& [xp, points] : applied) {
+		notify(&EventSink::xpGained, XpGainedEvent{ .actor = player_, .stat = xp->stat, .xp = xp->xp });
+		if (points > 0) {
+			notify(&EventSink::pointGained, PointGainedEvent{ .actor = player_, .stat = xp->stat, .points = points, .source = PointSource::Xp });
+		}
+	}
+	return deltas;
+}
+
 template <typename Event>
 void StatsService::notify(void (EventSink::*handler)(const Event&), const Event& event) const
 {
@@ -235,15 +263,7 @@ std::expected<std::vector<AvDelta>, Error> StatsService::addXp(ActorId actor, co
 	if (!std::isfinite(xp) || xp <= 0.0) {
 		return rejected(std::format("XP {} for stat '{}' is not positive and finite", xp, stat.name));
 	}
-	return findStat(actor, stat).transform([&](ActorState* state) {
-		const GainResult gain = tom::stats::addXp(state->stats.values[stat], xp, r_);
-		auto             deltas = updateEffects(*state);
-		notify(&EventSink::xpGained, XpGainedEvent{ .actor = actor, .stat = stat, .xp = xp });
-		if (gain.points > 0) {
-			notify(&EventSink::pointGained, PointGainedEvent{ .actor = actor, .stat = stat, .points = gain.points, .source = PointSource::Xp });
-		}
-		return deltas;
-	});
+	return findStat(actor, stat).transform([&](ActorState* state) { return train(*state, { StatXp{ .stat = stat, .xp = xp } }); });
 }
 
 std::expected<std::vector<AvDelta>, Error> StatsService::setValues(ActorId actor, const StatId& stat, const StatValue& value)
@@ -450,6 +470,13 @@ std::expected<double, Error> StatsService::critChance(ActorId actor, CritKind ki
 	const std::shared_ptr<const CritShiftRegistry> shifts = critShifts_;
 	return findActor(actor).transform([&](const ActorState* state) {
 		return tom::stats::critChance(state->stats, activeTable_, *shifts, kind);
+	});
+}
+
+std::expected<std::vector<AvDelta>, Error> StatsService::trainSkillLevelUp(const std::string& skill, std::int32_t levelReached)
+{
+	return findActor(player_).transform([&](ActorState* state) {
+		return train(*state, skillLevelUpXp(tables_.skills, xpModifiers_, skill, levelReached));
 	});
 }
 

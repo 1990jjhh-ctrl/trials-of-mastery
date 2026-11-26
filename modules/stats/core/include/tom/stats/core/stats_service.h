@@ -11,6 +11,7 @@
 #include "tom/stats/core/error.h"
 #include "tom/stats/core/stat_registry.h"
 #include "tom/stats/core/stat_value.h"
+#include "tom/stats/core/training.h"
 #include "tom/stats/core/xp_modifiers.h"
 
 #include <cstdint>
@@ -324,6 +325,14 @@ public:
 	// an unknown actor.
 	[[nodiscard]] std::expected<double, Error> critChance(ActorId actor, CritKind kind) const;
 
+	// Trains the player's stats for a skill reaching levelReached
+	// (ST-14, ST-16): addXp() of skillLevelUpXp() with the service's tables
+	// and XP modifiers, with the events of addXp(). An unmapped skill gives
+	// no XP and no error. Amounts that addXp() would refuse (not positive or
+	// not finite) and stats that are not active are left out, also without
+	// an error. Fails for an unknown player.
+	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> trainSkillLevelUp(const std::string& skill, std::int32_t levelReached);
+
 	// Sets or replaces, or removes, the owner's XP modifier for the skill or
 	// action (ST-17), as XpModifierRegistry::set() and remove() do.
 	// setXpModifier returns false, and changes nothing, for what set()
@@ -369,6 +378,13 @@ private:
 
 	// Advances the stat and returns the event to send.
 	[[nodiscard]] static StatAdvancedEvent advanceStat(ActorId actor, ActorState& state, const StatId& stat);
+
+	// Adds each amount to the player's stat and buys the points it pays for
+	// at r (ST-5), leaving out amounts that are not positive and finite and
+	// stats that are not active. Then sends XP gained and point gained for
+	// each amount, after all of them are added, so a receiver may call the
+	// service. Returns the AvDeltas of the whole change.
+	[[nodiscard]] std::vector<AvDelta> train(ActorState& player, const std::vector<StatXp>& gains);
 
 	// Sends the event, if there is a receiver.
 	template <typename Event>
