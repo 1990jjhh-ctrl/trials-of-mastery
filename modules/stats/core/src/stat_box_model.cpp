@@ -72,6 +72,11 @@ PressResult StatBoxModel::press(std::size_t button)
 	if (!deltas) {
 		return PressResult{ .next = page(), .deltas = {}, .error = std::move(deltas.error()) };
 	}
+	if (!canAssign()) {
+		// After the last point the box starts over on its first page (ST-21),
+		// also when points become pending again while it is open.
+		screen_ = Screen::Stats;
+	}
 	return PressResult{ .next = page(), .deltas = std::move(*deltas), .error = std::nullopt };
 }
 

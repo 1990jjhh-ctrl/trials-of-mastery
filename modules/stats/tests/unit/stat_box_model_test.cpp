@@ -139,6 +139,10 @@ TEST_CASE("Level Up assigns one point per press until none is pending", "[stat_b
 	CHECK(last.text.starts_with("STR 12 (XP 0 / 100)\nDEX 10 (XP 0 / 100)\nCON 11 (XP 0 / 100)\n"));
 	CHECK(stats.pendingPoints() == 0);
 	CHECK(stats.read(kPlayer, kStr)->accumulated == 2);
+
+	// Points granted while the box is still open start on the first page.
+	stats.onPlayerLevelUp(3);
+	CHECK(box.page().buttons == std::vector<Button>{ { "Level Up" }, { "Cancel" } });
 }
 
 TEST_CASE("Back leaves the Level Up page with the points still pending", "[stat_box]")
