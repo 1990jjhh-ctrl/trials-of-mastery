@@ -18,7 +18,8 @@ enum class Rounding
 };
 
 // ST-24: below 10 000 the whole number, from 10 000 on three significant
-// digits with K, M, B or T; +inf as "∞".
+// digits with K, M, B or T; +inf as "--", since the message box font has no
+// infinity sign.
 //
 // The value is rounded to a whole number in the given direction first, then,
 // from 10 000 on, to three significant digits in the same direction, with the

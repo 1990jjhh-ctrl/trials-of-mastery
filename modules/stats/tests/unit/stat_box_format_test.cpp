@@ -95,8 +95,8 @@ TEST_CASE("from 1000T on the whole number of T", "[stat_box_format]")
 
 TEST_CASE("infinite and NaN values", "[stat_box_format]")
 {
-	CHECK(formatStatNumber(kInf, Rounding::Down) == "\xE2\x88\x9E");
-	CHECK(formatStatNumber(kInf, Rounding::Up) == "\xE2\x88\x9E");
+	CHECK(formatStatNumber(kInf, Rounding::Down) == "--");
+	CHECK(formatStatNumber(kInf, Rounding::Up) == "--");
 	CHECK(formatStatNumber(-kInf, Rounding::Down) == "?");
 	CHECK(formatStatNumber(-kInf, Rounding::Up) == "?");
 	CHECK(formatStatNumber(std::numeric_limits<double>::quiet_NaN(), Rounding::Down) == "?");
