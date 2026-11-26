@@ -12,6 +12,7 @@ add_library(tom_stats_core STATIC
     core/src/curve_parse.cpp
     core/src/effects.cpp
     core/src/persistence.cpp
+    core/src/stat_box_format.cpp
     core/src/stat_box_model.cpp
     core/src/stat_registry.cpp
     core/src/stats_service.cpp
@@ -42,6 +43,7 @@ if(TOM_BUILD_TESTS)
         tests/unit/json_schema.cpp
         tests/unit/persistence_test.cpp
         tests/unit/settings_test.cpp
+        tests/unit/stat_box_format_test.cpp
         tests/unit/stat_box_model_test.cpp
         tests/unit/stat_registry_test.cpp
         tests/unit/stats_service_crit_test.cpp
