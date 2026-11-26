@@ -179,7 +179,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 - **Covers:** ST-3 (default base, race adjustments), ST-6 (`r` validation at load), ST-9, ST-14 (mapping data), ST-15 (check and training data), ST-21 (groups), ST-24 (default key and button), ST-27, ST-28 (incompatible list).
 - **Scope:** `core/config/`, `modules/stats/data/trials-of-mastery-stats.ini`, `data/{stats,skills,actions,incompatible}/_default.json`, `data/schema/{stats,skills,actions,incompatible}.schema.json`.
 - **Interfaces:**
-  - `Settings`: the INI values of ST-27, plus the gamepad button of ST-24. The shipped INI sets the stat box key to K and the gamepad button to Y (D7); S2 checks that both are free in the skills menu.
+  - `Settings`: the INI values of ST-27, plus the gamepad button of ST-24. The shipped INI sets the stat box key to K and the gamepad button to Y (D7); S2 checks that both are free in the skills menu ([S2 result](#s2-result): K is, Y is checked by hand in U1).
   - `StatsTable`: per stat, the group, the default base (10 for every core stat, confirmed, ST-3), the race adjustments (ST-3, ST-27) and the effects (actor-value or named, each with a curve). Race adjustments are an object keyed by the race's editor ID (ST-27, `"NordRace": 1`); `RE::TESRace` keeps its editor ID at runtime. Races without an entry get no adjustment. `buildTables` takes the set of race editor IDs the loaded plugins define (empty in unit tests unless given); an adjustment for any other race is ignored and logged at debug level only ([§9](PRD.md#9-risks)), and the file still loads. The shipped default has no race adjustments: the PRD names none.
   - `SkillsTable`: per skill, the primary stat, secondary stat and split.
   - `ActionsTable`: per action, the check inputs with curves, the output mapping (assumption 7) and the training curves per stat.
@@ -233,7 +233,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 - **Goal:** the INI setting of the lines per stat box page (ST-24, ST-27, PR #33).
 - **Covers:** ST-24 (lines per page), ST-27.
 - **Scope:** `modules/stats/core/include/tom/stats/core/config/settings.h`, `modules/stats/core/src/config/settings.cpp`, `modules/stats/data/trials-of-mastery-stats.ini`, `modules/stats/tests/unit/settings_test.cpp`.
-- **Interfaces:** `Settings` gains `std::int32_t statBoxLinesPerPage`, read from `[StatBox] LinesPerPage`. A value below 2 (a page needs a heading and a line, assumption 17) or not an integer is rejected and reported like the other keys, and the default stays. The default is a placeholder until S2 measures it, and U1 sets the measured value in `settings.h` and the shipped INI; the INI comment says so. The placeholder is 15, the line count of the core stats' overview.
+- **Interfaces:** `Settings` gains `std::int32_t statBoxLinesPerPage`, read from `[StatBox] LinesPerPage`. A value below 2 (a page needs a heading and a line, assumption 17) or not an integer is rejected and reported like the other keys, and the default stays. The default is a placeholder until S2 measures it, and U1 sets the measured value in `settings.h` and the shipped INI; the INI comment says so. The placeholder is 15, the line count of the core stats' overview. S2 keeps 15 ([S2 result](#s2-result)); U1 drops the placeholder comments.
 - **Verification:** `unit` tests check that a missing key gives the default, a valid value is read, 1, 0, a negative and a non-integer value are rejected with the key in the error, and the shipped INI still loads without errors and matches the built-in defaults; `scripts/test.sh`, the format check and lint pass.
 - **Depends on:** C3. **Parallel** with every other task: no other task changes these files.
 
@@ -451,6 +451,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - for each pair (99.99, 100), (9999.5, 10000), (1639999, 1640000) and (999999, 1e6), the first rounded down shows a smaller number than the second rounded up, so the box never shows an XP amount equal to a cost it has not reached;
   - `scripts/test.sh`, the format check and lint pass.
 - **Depends on:** T1.1. **Parallel** with every other task: it only adds files and their CMake lines.
+- **Status:** merged (#35) with +inf as `∞`. The box's font has no ∞ ([S2 result](#s2-result)); C9d changes it to `--`.
 
 #### C9b Stat box sections, labels and group order (C9 amendment)
 
@@ -520,6 +521,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - the page transitions of C9 still hold with the new texts;
   - `scripts/test.sh`, the format check and lint pass.
 - **Depends on:** C3a, C9a, and C8 merged (C8 changes `stat_value.h`). **Parallel** with C7a, which changes only the service files and their tests.
+- **Status:** merged (#38); C9d changes its infinite-cost check from `∞` to `--`.
 
 #### C9c Stat box pages (C9 amendment)
 
@@ -543,6 +545,15 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - `scripts/test.sh`, the format check and lint pass.
 - **Depends on:** C9b, C3b. **Parallel** with C7a.
 
+#### C9d Infinite cost as `--` (C9a amendment)
+
+- **Goal:** show an infinite cost as `--` instead of `∞`, since the message box font has no ∞ ([S2 result](#s2-result), PR #41).
+- **Covers:** ST-24 (an infinite cost), ST-7.
+- **Scope:** `modules/stats/core/include/tom/stats/core/stat_box_format.h`, `modules/stats/core/src/stat_box_format.cpp`, `modules/stats/tests/unit/stat_box_format_test.cpp`, `modules/stats/tests/unit/stat_box_model_test.cpp`.
+- **Interfaces:** `formatStatNumber` keeps its signature; `+inf` gives `--` in both rounding directions, and the header comment says so. NaN and `-inf` still give `?`. `kInfinity` and its UTF-8 bytes go.
+- **Verification:** `unit` tests check that `+inf` gives `--` rounded down and up, NaN and `-inf` still give `?`, and C9b's infinite-cost line reads `Strength (STR) 2010 (0 / -- XP)`; no `∞` (`\xE2\x88\x9E`) is left under `modules/stats` (`grep -rn $'\xE2\x88\x9E' modules/stats` finds nothing); `scripts/test.sh`, the format check and lint pass.
+- **Depends on:** C9a, C9b (both merged) and PR #41 merged, so the PRD says `--`. **Parallel** with every other task: no open task changes these files.
+
 
 ### Phase 3: Spikes (uncertain game hooks)
 
@@ -551,7 +562,7 @@ Each spike is a throwaway prototype in the plugin with a time box. Its result is
 | ID | Question | Feeds |
 | --- | --- | --- |
 | S1 | Can the vanilla LevelUp menu be suppressed while the level and the perk point are still applied right away and the +10 is never granted (ST-19)? Where is the moment the menu would open? Does it behave the same with Experience and with a level-up menu mod? Fallback if suppression fails: let the vanilla flow run and revert the +10 (must be invisible to the player). | G5 |
-| S2 | Can a native message box open over the skills menu with SkyUI and without it, and can a key or gamepad button be caught only while that menu is open (ST-24)? Are the default key K and gamepad button Y free while the skills menu is open, with and without SkyUI, so that pressing them there does nothing else? If not, report it before U1 starts; changing the defaults is the user's decision. How many buttons fit in one box (ST-21 grouping)? How many lines of text does the box show before it cuts off or scrolls, with and without SkyUI, and does a long line wrap and take two (the default of `LinesPerPage`, C3b)? How many buttons fit with SkyUI? How long can a button text be (`Constitution (CON) 10`), and does the box's font have ∞ (U+221E)? The sectioned overview of C9b has 15 lines with the core stats alone. Is a hint possible without changing the skills menu (ST-25)? | U1, U2 |
+| S2 | Can a native message box open over the skills menu with SkyUI and without it, and can a key or gamepad button be caught only while that menu is open (ST-24)? Are the default key K and gamepad button Y free while the skills menu is open, with and without SkyUI, so that pressing them there does nothing else? If not, report it before U1 starts; changing the defaults is the user's decision. How many buttons fit in one box (ST-21 grouping)? How many lines of text does the box show before it cuts off or scrolls, with and without SkyUI, and does a long line wrap and take two (the default of `LinesPerPage`, C3b)? How many buttons fit with SkyUI? How long can a button text be (`Constitution (CON) 10`), and does the box's font have ∞ (U+221E)? The sectioned overview of C9b has 15 lines with the core stats alone. Is a hint possible without changing the skills menu (ST-25)? | U1, U2, C9d |
 | S3 | Where can skill XP be multiplied so that it stacks multiplicatively with Guardian Stones, Fortify effects and other mods (ST-12, ST-17), instead of replacing them or being overwritten? | G6 |
 | S4 | Where can incoming damage be split before it reaches Health, separately for physical and magic damage (ST-11)? Does that hook coexist with combat overhauls? | G7 |
 | S5 | How can DEX set the base crit chance for physical attacks and for spells, given that vanilla has no spell crits (ST-13)? | G8 |
@@ -595,6 +606,37 @@ Not covered:
 - **Level-up menu mods:** none is installed. A mod that only replaces `levelupmenu.swf` is never shown. A plugin that patches the same calls makes the scan fail, so the hook stays out (K1 or a compatibility note).
 - **1.6.x:** untested. Nothing is tied to a 1.7.x layout or offset: the IDs are AE IDs, the call offsets come from the scan and the skills offset from CommonLibSSE-NG (0x9B8 before 1.7.99). Whether the 1.6.x functions keep the same instruction shapes is not checked.
 - **Level changes outside this flow:** `player.setlevel` (41563) and the vanilla `AdvancePCLevel` set the level directly, without `LevelIncrease`, a perk point or a menu. `UpdateLevel` (22369) runs 41566 and `AdvanceLevel` in a loop, so it sends `LevelIncrease` but grants no perk point. Per [ST-18](PRD.md#75-level-up) these bypass the level-up: they grant no free points and don't advance stats. Only the hook path counts, so G5 must not count `LevelIncrease` events.
+
+#### S2 result
+
+Run on 2026-11-26 on 1.7.104 with SkyUI (`SkyUI_SE.esp` in the test install), at 1280×720, through the skyrim-mcp bridge in `qasmoke`. **A native message box opens over the skills menu, and K is caught only while that menu is open; the box needs vertical buttons, and the font has no ∞.** The prototype is `modules/stats/plugin/src/StatBoxSpike.cpp` and `.h` on the branch `stats/s2-stat-box-spike` (06bdd17). That branch stays unmerged, as the reference for U1.
+
+How the prototype works (Address Library IDs are AE):
+
+- An input sink on `RE::BSInputDeviceManager` and a `RE::MenuOpenCloseEvent` sink. K (DIK 0x25) and the gamepad's Y (0x8000) are handled only while `RE::StatsMenu` is open.
+- The box is a `RE::MessageBoxData` from `RE::MessageDataFactoryManager::GetCreator<RE::MessageBoxData>(RE::InterfaceStrings::messageBoxData)->Create()`, with `bodyText`, `buttonText` and a callback (an `RE::IMessageBoxCallback` made with `make_smart`) filled in, then queued with `RE::MessageBoxMenu::QueueMessage` (52271). The factory's defaults: `warningType` 0, `cancelButtonIndex` −1, `menuDepth` 10, `buttonPressOffset` 0, `useHtml` false, `verticalButtons` false, `isCancellable` false.
+- The hint test showed a HUD message with `RE::SendHUDMessage::ShowHUDMessage` when the skills menu opened.
+
+Evidence (plugin log, screenshots of the session, which are not kept; the skills menu opened with Tab, Up, Return):
+
+| Check | Result |
+| --- | --- |
+| K in gameplay | Logged as seen with the skills menu closed and ignored; nothing visible happens. |
+| K in the skills menu | Its mapped user event there is empty (no action), so K is free. |
+| Box over the skills menu | Opens over it; the skills menu stays open behind the box and after it is answered. The callback gets the index of the chosen button (Down three times and Return give button 3). |
+| Lines of text | The box never cuts off or scrolls; it shrinks the font to fit. 16 lines (15 and one more) show at full size; about 31 lines (24, a long line that wraps, and one more) are smaller but readable; 41 lines are too small to read. |
+| Long lines | A line wraps at about 40 characters; about 200 characters took 5 lines. |
+| ∞ (U+221E, UTF-8) | Shows as an empty box: the font has no glyph for it. *User decision:* an infinite cost shows as `--` (ST-24, PR #41). |
+| Buttons side by side (default) | 3 fit easily; 6 labels like `Constitution (CON) 1` fit across; 8 overflow both screen edges, with the box stretched to the full width. |
+| `verticalButtons = true` | 10 buttons and 16 lines of text fit, with the font slightly smaller. *User decision:* the box stacks its buttons (ST-24, PR #41). |
+| Hint (ST-25) by HUD message | A HUD message sent when the skills menu opens is not visible over the skills menu, nor after it closes. |
+
+Not covered (*user decision:* the user checks the first three by hand later; U1 lists them as manual checks):
+
+- **Gamepad Y:** the bridge cannot send gamepad input, so whether Y is caught and free in the skills menu is not checked.
+- **The game without SkyUI:** the bridge cannot turn plugins off. Whether the box opens over the vanilla skills menu, and whether its line and button limits are the same, is not checked.
+- **Other resolutions:** only 1280×720 was tried.
+- **Other hint routes (ST-25):** only the HUD message was tried.
 
 ### Phase 4: Game layer (`modules/stats/plugin/`)
 
@@ -718,18 +760,21 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
 - **Goal:** show the C9 pages as native message boxes. They open by key in the skills menu and from G5.
 - **Covers:** ST-21, ST-22, ST-24.
 - **Interfaces:**
-  - An input sink that is active only while the skills menu is open and uses the INI key and gamepad button. A message-box adapter that renders a `Page` and returns the pressed index.
-  - Each opening builds a new `StatBoxModel` (C9b) over the service, the `Tables` G1 built (the service takes its own copy, so the plugin keeps one for the box), the plugin's `StatBoxSections` (A1, A2) and a `StatBoxLayout` of the button count S2 found and `Settings::statBoxLinesPerPage`. The adapter applies `PressResult::deltas` through G3 and logs `PressResult::error` and `StatBoxModel::errors()`.
-  - U1 sets the default of `LinesPerPage` (C3b) and the button count to what S2 measured. If S2 finds that the lines or labels wrap or are cut, or that ∞ does not render, U1 stops and reports before it changes the display (see Risks).
+  - An input sink on `RE::BSInputDeviceManager` that is active only while `RE::StatsMenu` is open (tracked by a `RE::MenuOpenCloseEvent` sink) and uses the INI key and gamepad button, as in the S2 prototype ([S2 result](#s2-result); branch `stats/s2-stat-box-spike`, not merged).
+  - A message-box adapter that renders a `Page` and returns the pressed index: a `RE::MessageBoxData` from the `MessageDataFactoryManager` creator, with `bodyText`, `buttonText`, `verticalButtons = true` (ST-24, PR #41) and an `RE::IMessageBoxCallback`, queued with `RE::MessageBoxMenu::QueueMessage` (52271). The other fields keep the factory defaults S2 logged.
+  - Each opening builds a new `StatBoxModel` (C9b) over the service, the `Tables` G1 built (the service takes its own copy, so the plugin keeps one for the box), the plugin's `StatBoxSections` (A1, A2) and a `StatBoxLayout` of `maxButtons` 10 (S2, with vertical buttons) and `Settings::statBoxLinesPerPage`. The adapter applies `PressResult::deltas` through G3 and logs `PressResult::error` and `StatBoxModel::errors()`.
+  - `LinesPerPage` keeps its default of 15 (C3b): 15 lines show at full size, and the box stays readable up to about 30 lines, which leaves room for lines that wrap at about 40 characters. U1 drops the placeholder comments in `settings.h` and the shipped INI.
 - **Verification:** `in-game`:
-  - the key opens the box with and without SkyUI;
+  - the key opens the box with and without SkyUI, and does nothing outside the skills menu;
+  - manual checks the S2 run could not do (user decision, [S2 result](#s2-result)), run by the user by hand: the gamepad's Y opens the box in the skills menu and does nothing else there; without SkyUI, the box opens over the skills menu and the default overview and a page of 10 buttons fit; the same at a resolution other than 1280×720;
+  - an infinite cost shows as `--` (C9d);
   - the overview shows the four default sections with display names in full, with and without SkyUI;
   - every ST-21 flow works, and after the last point the box shows the first page;
   - with `LinesPerPage` lowered in the INI, the overview splits into pages with "Back" and "Next" and a long section shows its parts; with a low button count (a test build), the group list and a group's stats are paged; with and without SkyUI;
   - unspent points survive Cancel and save/load;
   - group pages appear with a registered test stat, and a registered test stat without a group shows in its namespace's section;
   - with a point-assignment claim, only "OK" shows.
-- **Depends on:** S2, C3b, C9c, G5.
+- **Depends on:** S2, C3b, C9c, C9d, G5.
 
 #### U2 Skills-menu hint (Could)
 
@@ -737,6 +782,7 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
 - **Covers:** ST-25.
 - **Verification:** `in-game`. The hint is visible, and the skills menu is unchanged with SkyUI and with CSF.
 - **Depends on:** S2, U1. Drop this task if S2 is negative.
+- **Status:** the HUD route does not work: a HUD message sent when the skills menu opens is not visible over it, nor after it closes ([S2 result](#s2-result)). No other route was tried. Whether to drop U2 or try another route first is the user's decision.
 
 ### Phase 6: API
 
@@ -804,7 +850,7 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
   - T1.2 and the spikes S1 to S8 run alongside Phase 2. S8 waits on the Wine Mono user action.
   - T1.3 (sanitizer CI) touches only the presets, the workflow, `CONTRIBUTING.md` and the README, and runs at any time.
   - C1, C2 and C4 run in parallel. C9 runs in parallel with C8 and C7a; C8 and C7a share the service files, so they run one after the other, in either order.
-  - The stat box amendments of PR #31: C9a only adds files and runs at any time. C3a runs in parallel with C8, C7a and C9a. C9b follows C3a, C9a and the merge of C8 (`stat_value.h`), and runs in parallel with C7a. C3b (PR #33) runs at any time. C9c follows C9b and C3b. U1 needs C9c, A1 needs C9b.
+  - The stat box amendments of PR #31: C9a only adds files and runs at any time. C3a runs in parallel with C8, C7a and C9a. C9b follows C3a, C9a and the merge of C8 (`stat_value.h`), and runs in parallel with C7a. C3b (PR #33) runs at any time. C9c follows C9b and C3b. C9d (S2) runs at any time once PR #41 is merged. U1 needs C9c and C9d, A1 needs C9b.
   - G6, G7, G8, G9a to G9c and G10a to G10c run in parallel once their spike and G1 or G3 are done.
 
 ## Risks
@@ -824,7 +870,7 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
 - **Cross build:** CommonLibSSE-NG and the vcpkg ports must build with clang-cl and lld-link against xwin. Port build scripts that assume MSVC can fail. T1.1 showed that the CommonLibSSE-NG custom ports cover this (the directxtk shaders need Wine and llvm-mingw); for a new failing dependency the fallback is to vendor it as a submodule.
 - **Papyrus under Wine (S8):** this is blocked until Wine Mono or .NET is installed in the prefix. If the compiler still fails, A2 is blocked; fallback: revisit D5 (Caprica).
 - **S1 fails:** if the LevelUp menu cannot be suppressed cleanly, ST-19 and success criterion 1 need the revert fallback, or a PRD change. This is the highest-risk spike, so run it first. Resolved: suppression works with Experience ([S1 result](#s1-result)). What is left: 1.6.x, level-up menu mods and the game without Experience are untested (the hook has no 1.7.x-only offset). `setlevel`-style level changes are settled by ST-18: they are not level-ups, and G5 counts only the hook path.
-- **Stat box text (S2, U1):** paging (C9c) covers an overview or a button list that is too long, but it counts the model's lines, not the lines the box draws. A line that wraps takes two, so a page of long lines (display names, provider lines) can still overflow; the line count may also differ with SkyUI, resolution or font size, while the INI has one value. Button labels like `Constitution (CON) 10` may be cut, and the box's font may lack ∞. S2 measures this before U1. If the text wraps or is cut, the ways out (a lower default, cutting lines in the model, short names only) are for the user to decide, since they change what ST-24 shows.
+- **Stat box text (S2, U1):** paging (C9c) counts the model's lines, not the lines the box draws, and a line longer than about 40 characters wraps. S2 showed that the box never cuts off or scrolls but shrinks its font, readable up to about 30 lines, so 15 lines per page leave room for wrapped lines; a page of many long provider lines can still become small. With vertical buttons, 10 fit with 16 lines of text; the ∞ glyph is missing, so C9d shows `--` ([S2 result](#s2-result)). Left open: the game without SkyUI, other resolutions and the gamepad's Y, which the user checks by hand in U1. If those differ, the ways out (a lower default, fewer buttons, short names only) are for the user to decide, since they change what ST-24 shows.
 - **Check hooks (S6b):** persuasion and intimidation in vanilla are dialogue conditions on Speech, not a formula. Replacing them may need condition-function hooks, or may not be possible without an ESP, which the "no ESP" constraint rules out.
 - **Magic crit (S5):** vanilla has no spell crits. Adding them may need a damage hook that overlaps with S4 and with combat overhauls.
 - **NPC actor-value persistence:** permanent modifiers on non-persistent NPCs reset when the actor respawns, but the ledger in the co-save does not. G2 and G3 must reconcile this, and OQ-1 may change how much NPC data exists at all.
