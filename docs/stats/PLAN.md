@@ -62,6 +62,15 @@ These are the user's answers to the decisions in the first draft of this plan.
 14. **Tables fixed at construction (constraint, from C7):** `StatsService` takes its `Tables` in the constructor and never changes them, and `registerStat` fails for a stat without a stats-table entry, since the default base comes from there (ST-3). So every table entry, the API-registered ones included (A1, the luck module's LUC per [LU-1](../luck/PRD.md)), is merged and passed to `buildTables` before the service is built; G1 builds it after that, then calls `registerStat` for each registered stat. `registerStat` on a built service only activates a stat whose entry is already in the tables; a stat whose entry arrives later cannot be added in that session.
 15. **Threads (to settle in G1, before the first hook task):** `StatsService` has no locking. Its copy-on-write crit shifts (C7) protect only against re-entry on one thread: a shift that sets or removes shifts while `critChance` runs. Two threads calling the service at once are a data race. G1 sets the rule for the whole plugin, which each hook task, A1 and A2 follow: which threads may call the service, and how a hook that runs on another thread reaches it (a deferred call through the SKSE task interface, `SKSE::GetTaskInterface()->AddTask`, a lock in the plugin around the service, or a value cached on the main thread). A hook that needs a value at once, inside the game's own computation (G6 skill XP factor, G7 split, G8 crit chance, G10 check), cannot be deferred, so the rule must cover it. The PRD says nothing on threads; nothing about it is visible to the player, so it is a design choice for G1, not an open PRD question.
 16. **N and claims are session state (user decision, 2026-11-26):** as [§8](PRD.md#8-constraints) has it, a save stores `r` but neither N nor the claims of advancing (ST-6) and point assignment (ST-22). N comes from the INI each session, so a changed N applies to existing saves, and a claiming module (the mastery module) sets it again through the API. The claiming module also claims again each session. So C8 stores neither, and a revert keeps both, like crit shifts and XP modifiers.
+17. **Stat box display (from PRs #31 and #33, C3a, C3b, C9a, C9b, C9c):** ST-21 and ST-24 leave these details open. The ones marked *user decision* are the user's answers of 2026-11-26; the others are plan choices:
+    - *User decision:* "as in the stats file" means the order in which the stats files of the merge (default, patches, mod patches, in merge order, each in its text order) first name a stat, with each stat's group taken from the merged table. A group set only by an API-registered entry is not a stats-file group. The shipped default is reordered so its groups come out as [§7.8](PRD.md#78-configuration) lists them: Warrior, Mage, Thief, Other.
+    - *User decision:* a registered stat that names a group no stats file names (neither a stats-file group nor its namespace group) is ordered with the namespace groups, by its registration, before Other.
+    - Within a section the stats keep the registry order (core stats in PRD order, then the registered ones in registration order). A section is the group name on its own line, then its lines; sections are separated by an empty line. A group with no active stat has no section, also when its namespace has a section provider (*user decision*).
+    - A section provider fills the section whose group name equals its namespace, however the group was set. It is called once per opening, so lines a Papyrus module updates while the box is open show at the next opening. A provider fills only the overview; the group's stats still get their buttons on the Level Up pages.
+    - Rounding: XP rounds down, and the cost rounds up after the tolerance of `addXp` is taken off, so the box never shows `100 / 100` without the point gained. *User decision:* the effective value can have a fraction (multiplier, MA-3); it shows as a whole number rounded down, where C9 showed one decimal.
+    - *User decisions for the pages of PR #33 (C9c):* the lines per page count every line of a page's text, the group names and the empty lines between sections included. "Back" is the leftmost button on every level-up page, paged or not, so merged C9's "Back" moves from last to first there: on the first page of a list it leaves the list as before, from the second page on it goes to the previous page. The paged group list is headed `Level Up (1 / 2)`.
+    - *Plan choices for the pages of PR #33 (C9c):* a page fills with whole sections in order; a section that does not fit on the current page starts a new one. A section longer than a page gets pages of its own: `k = ⌈n / (L − 1)⌉` pages for `n` lines and `L` lines per page, the first `n mod k` of them one line longer. A paged button list has `k = ⌈n / (B − 2)⌉` pages for `n` buttons and `B` buttons per box, spread the same way, with room for "Back" and "Next". Button rows: "Back" first, then the page's own buttons, then "Next" last, on the overview (ST-24) and on the level-up pages alike. "Back" from "Level Up" returns to the overview page it was opened from.
+    - *Plan choice:* ST-24 names no suffix after T; from 1000T on the box shows the whole number of T (`2500T`). NaN and −∞, which no stat value should reach, show as `?`.
 
 ## Tasks
 
@@ -168,6 +177,41 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - INI defaults are loaded when keys are missing;
   - an INI value of `r` that [ST-6](PRD.md#72-xp-and-cost) rejects is logged and replaced by the built-in default, the same one used for a missing key (at load, that default is the previous value).
 - **Depends on:** C1, C2. **Sequential.**
+- **Status:** merged (#12) before PR #31; C3a adds the display name, the short name, the namespace group and the group order.
+
+#### C3a Display names, namespace groups and group order in the stats table (C3 amendment)
+
+- **Goal:** bring the merged C3 code, the stats schema and the default stats file in line with PR #31: a stat entry carries a display name and a short name, a registered stat without a group is in its namespace's group, and the tables keep the order in which the stats files name the groups.
+- **Covers:** ST-21 (namespace groups, group order), ST-24 (display name and short name), ST-27 (stats-file fields), [§7.8](PRD.md#78-configuration) default groups.
+- **Scope:**
+  - `modules/stats/core/include/tom/stats/core/table_merge.h`, `modules/stats/core/src/table_merge.cpp` (the key order only);
+  - `modules/stats/core/include/tom/stats/core/config/tables.h`, `modules/stats/core/src/config/tables.cpp`;
+  - `modules/stats/data/schema/stats.schema.json`, `modules/stats/data/stats/_default.json`;
+  - `modules/stats/tests/unit/table_merge_test.cpp`, `tables_test.cpp`, `default_tables_test.cpp`.
+- **Interfaces:**
+  - `StatEntry` gains `std::optional<std::string> displayName` and `std::optional<std::string> shortName`, read from the fields `displayName` and `shortName` (strings of at least one character), which the schema, the stats validator and `kStatKeys` gain. A registered stat brings both in its stats-table entry, as it brings its group and base (A1); there is no separate API call.
+  - A stat entry without `group`: a namespaced stat is in the group its namespace names (`Luck:LUC` in `Luck`, [ST-21](PRD.md#75-level-up)), any other stat in `kOtherGroup`. A new `[[nodiscard]] std::string_view namespaceOf(std::string_view name)` in `tables.h`, next to `isNamespaced`, returns the part before the colon, or an empty view for a name that is not namespaced. The comments on `kOtherGroup` and `StatEntry` and the schema's `group` description say so.
+  - `MergeResult` gains `std::vector<std::string> keyOrder`: the top-level keys of `merged` that a file set, in the order the files first set them, files in merge order and each file's keys in its text order. Keys that only the registered layer sets are not in it. A key that a `null` removes leaves the list; a later file that adds it again appends it. A skipped file adds nothing, since its staged state is dropped (C2). `nlohmann::json` sorts object keys, so the text order has to be read separately, for example by parsing the file a second time as `nlohmann::ordered_json`.
+  - `Tables` gains `std::vector<std::string> statGroups`: each group that the stats files set (the origin of `/<stat>/group` is not `Layer::Registered`), once, at the `keyOrder` position of its first stat (assumption 17). `buildTables` fills it; C9b orders the sections by it.
+  - `_default.json`: `displayName` and `shortName` for the eight core stats, as the [PRD §6](PRD.md#6-terminology) table names them (`Strength` and `STR`, and so on). Its entries are reordered to STR, CON, END, INT, WIS, DEX, PER, CHA, so `statGroups` is Warrior, Mage, Thief, Other (assumption 17).
+- **Verification:** `unit` tests check that:
+  - the shipped default gives each core stat its display name and short name, and `statGroups` is Warrior, Mage, Thief, Other;
+  - an entry without `displayName` or `shortName` loads with them empty; a non-string or empty one skips the file with an `InvalidEntry` diagnostic (C2);
+  - `Mod:Foo` without a group is in `Mod`, with group `Mage` in Mage, and a core stat whose group a patch removes with `null` is in Other;
+  - `namespaceOf("Luck:LUC")` is `Luck`, and `namespaceOf("STR")` is empty;
+  - `keyOrder` follows each file's text order, not the alphabet; a patch's new key is appended; a key removed with `null` leaves the list and comes back at the end when a later file adds it again; a skipped file adds no key; a key only the registered layer sets is absent;
+  - `statGroups` lists each group once; a patch that gives an existing stat a new group puts that group at the stat's position; a group that only a registered entry sets is not in it;
+  - `scripts/test.sh`, the format check and lint pass ([CONTRIBUTING.md#workflow](../../CONTRIBUTING.md#workflow)).
+- **Depends on:** C3. **Parallel** with C7a, C8 and C9a (no shared files).
+
+#### C3b Stat box lines per page in the INI (C3 amendment)
+
+- **Goal:** the INI setting of the lines per stat box page (ST-24, ST-27, PR #33).
+- **Covers:** ST-24 (lines per page), ST-27.
+- **Scope:** `modules/stats/core/include/tom/stats/core/config/settings.h`, `modules/stats/core/src/config/settings.cpp`, `modules/stats/data/trials-of-mastery-stats.ini`, `modules/stats/tests/unit/settings_test.cpp`.
+- **Interfaces:** `Settings` gains `std::int32_t statBoxLinesPerPage`, read from `[StatBox] LinesPerPage`. A value below 2 (a page needs a heading and a line, assumption 17) or not an integer is rejected and reported like the other keys, and the default stays. The default is a placeholder until S2 measures it, and U1 sets the measured value in `settings.h` and the shipped INI; the INI comment says so. The placeholder is 15, the line count of the core stats' overview.
+- **Verification:** `unit` tests check that a missing key gives the default, a valid value is read, 1, 0, a negative and a non-integer value are rejected with the key in the error, and the shipped INI still loads without errors and matches the built-in defaults; `scripts/test.sh`, the format check and lint pass.
+- **Depends on:** C3. **Parallel** with every other task: no other task changes these files.
 
 #### C4 Stat values, cost and progression
 
@@ -346,9 +390,135 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 
 - **Goal:** a pure state machine for the stat-box pages and their texts. It has no UI.
 - **Covers:** ST-2 (opt-out in the box), ST-21, ST-22, ST-24 (content and flow).
-- **Interfaces:** `StatBoxModel(service, maxButtons)`. `Page { text; vector<Button> }`. `press(buttonIndex) -> Page | Closed`.
-- **Verification:** `unit` tests for every page transition in ST-21 and ST-22, for group pages when the stats plus "Back" exceed `maxButtons`, and for registered stats without a group landing in Other. A registered stat opted out of free points (ST-2) shows on the info page but not on the "Level Up" pages, and a group left without stats there is not shown (ST-21).
+- **Interfaces** (as merged, `stat_box_model.h`):
+  - `StatBoxModel(StatsService& service, const StatsTable& stats, std::size_t maxButtons)`; `Page page() const`; `PressResult press(std::size_t button)`.
+  - `Page { std::string text; std::vector<Button> buttons; }`, `Button { std::string text; }`, `Closed {}`.
+  - `PressResult { std::variant<Page, Closed> next; std::vector<AvDelta> deltas; std::optional<Error> error; }`: the deltas of the free point a press assigned, for G3, and why a press changed nothing, for the log.
+  - The model reads every value from the service when it builds a page. Each opening of the box builds a new model.
+- **Verification:** `unit` tests for every page transition in ST-21 and ST-22 and for group pages when the stats plus "Back" exceed `maxButtons`. A registered stat opted out of free points (ST-2) shows on the info page but not on the "Level Up" pages, and a group left without stats there is not shown (ST-21).
 - **Depends on:** C7. **Parallel** with C8 and C7a.
+- **Status:** merged (#29) before PR #31. It lists the stats without sections or labels, puts a stat without a stats-table entry in Other, orders the groups by their first stat and formats numbers its own way. C9a and C9b bring it in line.
+
+#### C9a Number format of the stat box
+
+- **Goal:** the number format of ST-24 as a pure function, for C9b.
+- **Covers:** ST-24 (numbers), ST-7 (an infinite cost shows as ∞).
+- **Scope:** new `modules/stats/core/include/tom/stats/core/stat_box_format.h`, `modules/stats/core/src/stat_box_format.cpp` and `modules/stats/tests/unit/stat_box_format_test.cpp`, with their lines in `modules/stats/CMakeLists.txt`.
+- **Interfaces:**
+
+  ```cpp
+  enum class Rounding { Down, Up };
+
+  // ST-24: below 10 000 the whole number, from 10 000 on three significant
+  // digits with K, M, B or T; +inf as "∞".
+  [[nodiscard]] std::string formatStatNumber(double value, Rounding rounding);
+  ```
+
+  - The value is first rounded to a whole number in the given direction (`Down` towards −∞, `Up` towards +∞). Below 10 000 in absolute value, that number is the text.
+  - From 10 000 on: three significant digits, rounded in the same direction, with the largest of K (10³), M (10⁶), B (10⁹) and T (10¹²) that leaves at least one digit before the point. A rounding that carries to the next power of 1000 takes the next suffix: `10000` gives `10.0K`; `1638400` gives `1.64M` rounded up and `1.63M` rounded down; `999999` gives `999K` rounded down and `1.00M` rounded up.
+  - From 1000T on, the whole number of T rounded in that direction (`2500T`, assumption 17).
+  - A negative value gets `-` before the text of its absolute value, with the rounding applied to the signed value (−2.5 rounded down gives `-3`).
+  - `+inf` gives `∞` (U+221E, UTF-8); NaN and `-inf` give `?` (assumption 17).
+  - The function does not hide floating-point noise: C9b takes the tolerance off a cost before rounding it up.
+- **Verification:** `unit` tests check that:
+  - 0, 12, 9999, 9999.7 rounded down (`9999`) and rounded up (`10.0K`), and 100.00000000000001 rounded down (`100`) and up (`101`) come out as specified;
+  - the examples above, 12 345 rounded down (`12.3K`), 1.5e9 (`1.50B`), 1e15 (`1000T`) and 2.5e15 rounded down (`2500T`) come out;
+  - `+inf` gives `∞`, NaN and `-inf` give `?`, and −12 345 rounded down gives `-12.4K`;
+  - for each pair (99.99, 100), (9999.5, 10000), (1639999, 1640000) and (999999, 1e6), the first rounded down shows a smaller number than the second rounded up, so the box never shows an XP amount equal to a cost it has not reached;
+  - `scripts/test.sh`, the format check and lint pass.
+- **Depends on:** T1.1. **Parallel** with every other task: it only adds files and their CMake lines.
+
+#### C9b Stat box sections, labels and group order (C9 amendment)
+
+- **Goal:** bring the merged C9 model in line with PR #31 and fix the two review findings of #29: a cost or an XP amount that rounding shows wrongly, and a box that could jump back to "Level Up" after the last point.
+- **Covers:** ST-21 (labels on the buttons, namespace groups, group order, first page after the last point), ST-24 (sections, labels, number format, sections filled by a module), ST-26 (the provider registry, core part).
+- **Scope:**
+  - `modules/stats/core/include/tom/stats/core/stat_box_model.h`, `modules/stats/core/src/stat_box_model.cpp`, `modules/stats/tests/unit/stat_box_model_test.cpp`;
+  - new `modules/stats/core/include/tom/stats/core/stat_box_sections.h`, `modules/stats/core/src/stat_box_sections.cpp`, `modules/stats/tests/unit/stat_box_sections_test.cpp`, with their CMake lines;
+  - `modules/stats/core/include/tom/stats/core/stat_value.h`, `modules/stats/core/src/stat_value.cpp` (`kCostTolerance` only).
+- **Interfaces:**
+  - `StatBoxSections` (new) holds the section providers per namespace:
+
+    ```cpp
+    // The lines a module shows in the stat box section of its namespace's
+    // group, in place of the stat lines (ST-24, ST-26).
+    using SectionProvider = std::function<std::vector<std::string>()>;
+
+    class StatBoxSections
+    {
+    public:
+        // Sets the provider of the namespace, replacing an earlier one. Returns
+        // false, and changes nothing, for an empty namespace, one with a colon
+        // or an empty function.
+        [[nodiscard]] bool set(std::string namespaceName, SectionProvider provider);
+        void remove(std::string_view namespaceName);
+        [[nodiscard]] const SectionProvider* find(std::string_view namespaceName) const;
+    };
+    ```
+
+  - Where the registry lives: in its own class, which the plugin holds next to the service, and which A1 and A2 fill. Not in `StatsService`: the box is its only reader, and nothing in it is saved or reset by C8's `resetSaveState`, while C7a and C8 both change `stats_service.h` and `.cpp`, so a service change would wait behind both. Not in `StatBoxModel`: a model lives only while the box is open. Who may set which namespace is A1's to check.
+  - Constructor: `StatBoxModel(StatsService& service, const Tables& tables, const StatBoxSections& sections, StatBoxLayout layout)`, in place of the `StatsTable` one, with `struct StatBoxLayout { std::size_t maxButtons; };`, which C9c extends. It reads each stat's group, display name and short name from `tables.stats` and the group order from `tables.statGroups` (C3a). The service, the tables and the sections must outlive the model.
+  - In the constructor, the model calls the provider of each section the overview shows, once, on a copy of the `SectionProvider`, so a provider that removes itself does no harm, and keeps the lines for its lifetime (assumption 17). A provider that throws is caught: its section shows the stat lines, and `[[nodiscard]] const std::vector<Error>& errors() const` lists the failure for the log.
+  - Label: `<display name> (<short name>)`, or the short name alone without a display name. Without a short name, the stat's name without its namespace is the short name. A stat without a stats-table entry has neither, and is in its namespace's group, or in Other without a namespace; only tests build one, since `registerStat` needs an entry (assumption 14).
+  - First page: one section per group with an active stat, in the group order below, laid out as assumption 17 says. A stat's line is `<label> <value> (<xp> / <cost> XP)`, with `formatStatNumber` (C9a): the effective value and the XP rounded down, the cost rounded up after `cost · (1 − kCostTolerance)`. A section with a provider shows the provider's lines in place of the stat lines.
+  - Group order, for the sections and for the group buttons of "Level Up": the groups of `tables.statGroups` except Other, then every other group of an active stat in the order of its first stat in `StatRegistry::activeStats()` (so the namespace groups come in registration order), then Other. A group without a stat on the page is left out.
+  - Stat buttons on the "Level Up" pages show `<label> <value>`, e.g. `Intelligence (INT) 12`.
+  - A press that assigns the last pending point sets the screen back to the first page (`screen_ = Screen::Stats`), so the box does not return to "Level Up" when points become pending again while it is open.
+  - `kCostTolerance` moves from the anonymous namespace of `stat_value.cpp` to `stat_value.h` as `inline constexpr double kCostTolerance = 1e-9;`, with its comment, so `addXp` and the box use one value. The model's own `formatNumber` goes; C9a replaces it.
+- **Verification:** `unit` tests check that:
+  - with tables like the shipped default (display names, short names, groups and `statGroups` as C3a ships them), a player at the default base of 10 sees exactly:
+
+    ```txt
+    Warrior
+    Strength (STR) 10 (0 / 100 XP)
+    Constitution (CON) 10 (0 / 100 XP)
+    Endurance (END) 10 (0 / 100 XP)
+
+    Mage
+    Intelligence (INT) 10 (0 / 100 XP)
+    Wisdom (WIS) 10 (0 / 100 XP)
+
+    Thief
+    Dexterity (DEX) 10 (0 / 100 XP)
+    Perception (PER) 10 (0 / 100 XP)
+
+    Other
+    Charisma (CHA) 10 (0 / 100 XP)
+    ```
+
+  - a registered `Luck:LUC` without display name and short name shows as `LUC 7 (0 / 100 XP)` in a `Luck` section, one with only a display name `Luck` as `Luck (LUC) ...`, and a stat without a stats-table entry by its name without the namespace;
+  - registered stats `B:Y` and then `A:X`, both without a group, give sections in the order Warrior, Mage, Thief, B, A, Other; a registered stat with group Mage is in the Mage section; Other is last even when `statGroups` names it first;
+  - a provider for `Luck` fills that section with exactly its lines, under the group name, and leaves the other sections alone; it is called once per model, also across presses; a provider that throws leaves the stat lines and one entry in `errors()`; a provider whose namespace has no active stat is not called and adds no section; after `remove` the stat lines are back;
+  - the "Level Up" buttons read `Strength (STR) 10` and so on, and the group buttons follow the section order;
+  - 99.99 XP toward a cost of 100 shows `99 / 100`; at r = 1.1 and one active point the cost `cost(1.1, 1)` (110.00000000000001) shows as `110`; a cost that overflows to infinity shows `∞`; 12 345 XP shows `12.3K`;
+  - after the last point the box shows the first page; when `onPlayerLevelUp` then grants points while the same model is open, `page()` is the first page with "Level Up" and "Cancel", not the "Level Up" page;
+  - `StatBoxSections::set` rejects an empty namespace, a namespace with a colon and an empty function; a second `set` replaces the first; `remove` of an unknown namespace does nothing;
+  - the page transitions of C9 still hold with the new texts;
+  - `scripts/test.sh`, the format check and lint pass.
+- **Depends on:** C3a, C9a, and C8 merged (C8 changes `stat_value.h`). **Parallel** with C7a, which changes only the service files and their tests.
+
+#### C9c Stat box pages (C9 amendment)
+
+- **Goal:** split the overview and the level-up button lists into pages when they do not fit one box, as PR #33 has it. A task of its own, after C9b, to keep each review small; both change the same files.
+- **Covers:** ST-21 (paged button lists), ST-24 (paged overview, "Back" and "Next", "OK" or "Level Up" and "Cancel" on every page).
+- **Scope:** `modules/stats/core/include/tom/stats/core/stat_box_model.h`, `modules/stats/core/src/stat_box_model.cpp`, `modules/stats/tests/unit/stat_box_model_test.cpp`.
+- **Interfaces:**
+  - `StatBoxLayout` gains `std::size_t linesPerPage`, from `Settings::statBoxLinesPerPage` (C3b), so it is `{ maxButtons, linesPerPage }`. The model raises a `maxButtons` below 4 (the most one overview page needs: "Back", "Level Up", "Cancel", "Next") to 4 and a `linesPerPage` below 2 to 2.
+  - Overview pages, by assumption 17: the sections laid out by C9b, filled into pages of at most `linesPerPage` lines; a section longer than a page spread evenly over pages of its own, each headed `<group> (<i> / <k>)`. Buttons: "Back" from the second page on, then "OK", or "Level Up" and "Cancel", then "Next" on every page that has a following one.
+  - Level-up pages: a button list that does not fit (`n + 1 > maxButtons` for `n` groups, or for one group's `n` stats) is split by assumption 17, with "Back" first and "Next" last. The page text is `Level Up (<i> / <k>)` for the group list or `<group> (<i> / <k>)` for a group's stats, then `Free points: <n>`; an unpaged list keeps C9b's text. The unpaged lists get "Back" first as well (user decision, assumption 17).
+  - The model keeps the page index of the overview, the group list and the group; a page is rebuilt on each press, and an index past the last page is clamped to it. After the last point the box shows the first overview page (ST-21).
+- **Verification:** `unit` tests check, with exact page texts and button rows, that:
+  - with the shipped-default tables (C9b's 15 lines) and `linesPerPage` 15, there is one page with buttons `OK`, or `Level Up`, `Cancel`;
+  - with `linesPerPage` 8, page 1 is Warrior, an empty line and Mage (8 lines) with buttons `OK`, `Next`, and page 2 is Thief, an empty line and Other with buttons `Back`, `OK`; with points pending they are `Level Up`, `Cancel`, `Next` and `Back`, `Level Up`, `Cancel`; "Next" and "Back" move between them;
+  - a section exactly at the limit (`linesPerPage` 4 and Warrior's 4 lines) fills one page unsplit, without a part in its heading; with `linesPerPage` 4 the default gives four pages, the middle ones with `Back`, `OK`, `Next`;
+  - a `Luck` provider with 7 lines and `linesPerPage` 4 gives `Luck (1 / 3)` with 3 lines, then `Luck (2 / 3)` and `Luck (3 / 3)` with 2 each, each on a page of its own, and the next section starts a new page; 7 lines at `linesPerPage` 5 give pages of 4 and 3 lines;
+  - with room for all buttons, the "Level Up" page reads `Back`, `Strength (STR) 10`, ..., `Charisma (CHA) 10`, and an unpaged group page `Back` and then its stats; "Back" still leaves the page as in C9;
+  - with `maxButtons` 4 and the 8 core stats pending a point, "Level Up" shows `Level Up (1 / 2)` with `Back`, `Warrior`, `Mage`, `Next`, and `Level Up (2 / 2)` with `Back`, `Thief`, `Other`; "Back" on the first page returns to the overview page it came from, on the second to the first;
+  - three registered stats in Warrior, with `maxButtons` 4, give `Warrior (1 / 3)`, `(2 / 3)` and `(3 / 3)` with two stat buttons each between `Back` and `Next` (no `Next` on the last), and a point assigned on page 2 stays on page 2;
+  - assigning the last point from a later page of a group shows the first overview page; a `maxButtons` of 3 and a `linesPerPage` of 1 behave as 4 and 2;
+  - `scripts/test.sh`, the format check and lint pass.
+- **Depends on:** C9b, C3b. **Parallel** with C7a.
+
 
 ### Phase 3: Spikes (uncertain game hooks)
 
@@ -357,7 +527,7 @@ Each spike is a throwaway prototype in the plugin with a time box. Its result is
 | ID | Question | Feeds |
 | --- | --- | --- |
 | S1 | Can the vanilla LevelUp menu be suppressed while the level and the perk point are still applied right away and the +10 is never granted (ST-19)? Where is the moment the menu would open? Does it behave the same with Experience and with a level-up menu mod? Fallback if suppression fails: let the vanilla flow run and revert the +10 (must be invisible to the player). | G5 |
-| S2 | Can a native message box open over the skills menu with SkyUI and without it, and can a key or gamepad button be caught only while that menu is open (ST-24)? Are the default key K and gamepad button Y free while the skills menu is open, with and without SkyUI, so that pressing them there does nothing else? If not, report it before U1 starts; changing the defaults is the user's decision. How many buttons fit in one box (ST-21 grouping)? Is a hint possible without changing the skills menu (ST-25)? | U1, U2 |
+| S2 | Can a native message box open over the skills menu with SkyUI and without it, and can a key or gamepad button be caught only while that menu is open (ST-24)? Are the default key K and gamepad button Y free while the skills menu is open, with and without SkyUI, so that pressing them there does nothing else? If not, report it before U1 starts; changing the defaults is the user's decision. How many buttons fit in one box (ST-21 grouping)? How many lines of text does the box show before it cuts off or scrolls, with and without SkyUI, and does a long line wrap and take two (the default of `LinesPerPage`, C3b)? How many buttons fit with SkyUI? How long can a button text be (`Constitution (CON) 10`), and does the box's font have ∞ (U+221E)? The sectioned overview of C9b has 15 lines with the core stats alone. Is a hint possible without changing the skills menu (ST-25)? | U1, U2 |
 | S3 | Where can skill XP be multiplied so that it stacks multiplicatively with Guardian Stones, Fortify effects and other mods (ST-12, ST-17), instead of replacing them or being overwritten? | G6 |
 | S4 | Where can incoming damage be split before it reaches Health, separately for physical and magic damage (ST-11)? Does that hook coexist with combat overhauls? | G7 |
 | S5 | How can DEX set the base crit chance for physical attacks and for spells, given that vanilla has no spell crits (ST-13)? | G8 |
@@ -523,14 +693,19 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
 
 - **Goal:** show the C9 pages as native message boxes. They open by key in the skills menu and from G5.
 - **Covers:** ST-21, ST-22, ST-24.
-- **Interfaces:** an input sink that is active only while the skills menu is open and uses the INI key and gamepad button. A message-box adapter that renders a `Page` and returns the pressed index.
+- **Interfaces:**
+  - An input sink that is active only while the skills menu is open and uses the INI key and gamepad button. A message-box adapter that renders a `Page` and returns the pressed index.
+  - Each opening builds a new `StatBoxModel` (C9b) over the service, the `Tables` G1 built (the service takes its own copy, so the plugin keeps one for the box), the plugin's `StatBoxSections` (A1, A2) and a `StatBoxLayout` of the button count S2 found and `Settings::statBoxLinesPerPage`. The adapter applies `PressResult::deltas` through G3 and logs `PressResult::error` and `StatBoxModel::errors()`.
+  - U1 sets the default of `LinesPerPage` (C3b) and the button count to what S2 measured. If S2 finds that the lines or labels wrap or are cut, or that ∞ does not render, U1 stops and reports before it changes the display (see Risks).
 - **Verification:** `in-game`:
   - the key opens the box with and without SkyUI;
-  - every ST-21 flow works;
+  - the overview shows the four default sections with display names in full, with and without SkyUI;
+  - every ST-21 flow works, and after the last point the box shows the first page;
+  - with `LinesPerPage` lowered in the INI, the overview splits into pages with "Back" and "Next" and a long section shows its parts; with a low button count (a test build), the group list and a group's stats are paged; with and without SkyUI;
   - unspent points survive Cancel and save/load;
-  - group pages appear with a registered test stat;
+  - group pages appear with a registered test stat, and a registered test stat without a group shows in its namespace's section;
   - with a point-assignment claim, only "OK" shows.
-- **Depends on:** S2, C9, G5.
+- **Depends on:** S2, C3b, C9c, G5.
 
 #### U2 Skills-menu hint (Could)
 
@@ -544,16 +719,18 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
 #### A1 C++ API
 
 - **Goal:** a versioned public C++ API for other SKSE plugins.
-- **Covers:** ST-2, ST-3 (base adjustments), ST-6 (claim advancing, set N), ST-8, ST-13 (crit shifts), ST-16, ST-17, ST-22, ST-26.
+- **Covers:** ST-2, ST-3 (base adjustments), ST-6 (claim advancing, set N), ST-8, ST-13 (crit shifts), ST-16, ST-17, ST-22, ST-24 (section providers), ST-26.
 - **Scope:** `modules/stats/include/tom/stats/api.h` (header only, no CommonLib types beyond forward-declared actors) and the plugin-side implementation.
 - **Interfaces:**
   - An interface struct with a version number, handed out through the SKSE messaging interface on request.
   - Its functions map one to one onto `StatsService`, except `onPlayerLevelUp`, which G5 alone calls and the API does not expose (ST-18). Event callbacks are registered per event type. The XP modifiers, the training of mod actions (G9d) and the check values are the C7a operations; C7 alone does not have them.
   - Registrations are accepted until `kDataLoaded` and merged per assumption 3. They are not service calls: the service does not exist before `kDataLoaded`, and its tables are fixed once it does (assumption 14). A1 collects each registered table entry, and for a stat its free-point setting (ST-2), and hands them to G1, which merges them before `buildTables` and then calls `registerStat`. So the interface struct must be obtainable before `kDataLoaded`, for example at `kPostPostLoad`, and a registration after `kDataLoaded` fails with an error. Each registered table entry (stat, skill mapping, action) first runs through the C3 validator of its table; an entry invalid in itself (a wrong type, a missing field, an unknown curve) is rejected, the call returns an error and the rejection is logged ([§9](PRD.md#9-risks)). An entry that names an undefined stat is accepted here and dropped by `buildTables` like any other (C3).
+  - A registered stat's group, display name and short name come in its stats-table entry (C3a); without a group it is in its namespace's group (ST-21).
+  - Setting and removing the stat box section provider of a namespace ([ST-24](PRD.md#76-display), [LU-1](../luck/PRD.md)): a function the box calls when it opens, stored in the plugin's `StatBoxSections` (C9b), not in the service. Like crit shifts it is session state, not saved, and can be set after `kDataLoaded`. A1 decides how the caller shows that it owns the namespace, for example by having registered a stat in it, and documents that the function runs on the thread that opens the box (assumption 15) and must not throw across the DLL boundary.
   - Calls are allowed only on the main thread, and the header documents this. It also documents G1's thread rule (assumption 15) where it reaches API users: a crit shift is called on the thread of G8's hook, and an event callback on the thread that made the change.
   - `ActorStats` carries no actor identity, but a crit shift ([LU-7](../luck/PRD.md)) needs the actor to read its LUC and favour. A1 hands the luck module the actor: either a reverse lookup from `ActorStats` to the actor in the plugin, or an opaque actor view passed to the shift instead of `ActorStats`. Which one is decided in A1; the second changes C5's `CritShift` signature.
 - **Verification:** `unit` for the version check and argument validation in the core part, including a registered entry that its C3 validator rejects: the call fails, the rejection is logged and the entry does not reach the merge; a registered skill mapping naming an undefined stat is accepted and later dropped by `buildTables`. A3 does the end-to-end check.
-- **Depends on:** C7, C7a, G1.
+- **Depends on:** C7, C7a, C9b, G1.
 
 #### A2 Papyrus API
 
@@ -562,10 +739,11 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
 - **Scope:** `modules/stats/papyrus/` (the script source, with the `.pex` as a build output from the S8 custom command) and the native bindings in the plugin.
 - **Interfaces:**
   - Global native functions that mirror A1, with stats addressed by name, except the crit shift registration, which is C++ only (ST-26).
+  - The section of a namespace's group (ST-24, ST-26) is filled with lines: natives set and clear the lines of the caller's namespace, under A1's ownership rule. A2 keeps the lines and registers, per namespace, a `SectionProvider` (C9b) that returns them, so the box reads them when it opens (assumption 17).
   - Ascend takes a curve name and parameters and passes them on to the C++ ascend.
   - Events are delivered as SKSE mod events with documented names and arguments.
   - Natives that call the service follow G1's thread rule (assumption 15). `RE::BSScript::IVirtualMachine::RegisterFunction` takes `a_callableFromTasklets`, `false` by default, which makes a native wait for the next frame instead of running at once on a script thread; A2 keeps that default for them unless the rule allows otherwise.
-- **Verification:** `in-game`. `cgf` calls read and change values, a test script receives each event, and `Papyrus.0.log` shows no stack dumps.
+- **Verification:** `in-game`. `cgf` calls read and change values, a test script receives each event, lines set by `cgf` for the namespace of a registered test stat show in its section the next time the box opens and clearing them brings the stat lines back, and `Papyrus.0.log` shows no stack dumps.
 - **Depends on:** S8, A1.
 
 #### A3 API consumer test plugin
@@ -601,6 +779,7 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
 - Parallel tracks:
   - T1.2 and the spikes S1 to S8 run alongside Phase 2. S8 waits on the Wine Mono user action.
   - C1, C2 and C4 run in parallel. C9 runs in parallel with C8 and C7a; C8 and C7a share the service files, so they run one after the other, in either order.
+  - The stat box amendments of PR #31: C9a only adds files and runs at any time. C3a runs in parallel with C8, C7a and C9a. C9b follows C3a, C9a and the merge of C8 (`stat_value.h`), and runs in parallel with C7a. C3b (PR #33) runs at any time. C9c follows C9b and C3b. U1 needs C9c, A1 needs C9b.
   - G6, G7, G8, G9a to G9c and G10a to G10c run in parallel once their spike and G1 or G3 are done.
 
 ## Risks
@@ -614,6 +793,7 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
 - **Cross build:** CommonLibSSE-NG and the vcpkg ports must build with clang-cl and lld-link against xwin. Port build scripts that assume MSVC can fail. T1.1 showed that the CommonLibSSE-NG custom ports cover this (the directxtk shaders need Wine and llvm-mingw); for a new failing dependency the fallback is to vendor it as a submodule.
 - **Papyrus under Wine (S8):** this is blocked until Wine Mono or .NET is installed in the prefix. If the compiler still fails, A2 is blocked; fallback: revisit D5 (Caprica).
 - **S1 fails:** if the LevelUp menu cannot be suppressed cleanly, ST-19 and success criterion 1 need the revert fallback, or a PRD change. This is the highest-risk spike, so run it first. Resolved: suppression works with Experience ([S1 result](#s1-result)). What is left: 1.6.x, level-up menu mods and the game without Experience are untested (the hook has no 1.7.x-only offset). `setlevel`-style level changes are settled by ST-18: they are not level-ups, and G5 counts only the hook path.
+- **Stat box text (S2, U1):** paging (C9c) covers an overview or a button list that is too long, but it counts the model's lines, not the lines the box draws. A line that wraps takes two, so a page of long lines (display names, provider lines) can still overflow; the line count may also differ with SkyUI, resolution or font size, while the INI has one value. Button labels like `Constitution (CON) 10` may be cut, and the box's font may lack ∞. S2 measures this before U1. If the text wraps or is cut, the ways out (a lower default, cutting lines in the model, short names only) are for the user to decide, since they change what ST-24 shows.
 - **Check hooks (S6b):** persuasion and intimidation in vanilla are dialogue conditions on Speech, not a formula. Replacing them may need condition-function hooks, or may not be possible without an ESP, which the "no ESP" constraint rules out.
 - **Magic crit (S5):** vanilla has no spell crits. Adding them may need a damage hook that overlaps with S4 and with combat overhauls.
 - **NPC actor-value persistence:** permanent modifiers on non-persistent NPCs reset when the actor respawns, but the ledger in the co-save does not. G2 and G3 must reconcile this, and OQ-1 may change how much NPC data exists at all.
