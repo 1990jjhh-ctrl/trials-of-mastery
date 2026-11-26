@@ -24,7 +24,7 @@ Out of scope: the core stats and their effects ([stat module](../stats/PRD.md)).
 
 Requirement IDs use the prefix LU and run in document order.
 
-- LU-1: The module registers LUC as a stat through the stat module's API, under the namespaced name `Luck:LUC`; the stat box shows it as LUC. Like any new stat, its default base and adjustments are decided here, not in the stat module (ST-3). LUC comes from favour, so it is opted out of free level-up points (ST-2). LUC affects drop rates, crit and chances in activities.
+- LU-1: The module registers LUC as a stat through the stat module's API, under the namespaced name `Luck:LUC`; the module fills the stat box section of its Luck group with what LUC affects (ST-24). Like any new stat, its default base and adjustments are decided here, not in the stat module (ST-3). LUC comes from favour, so it is opted out of free level-up points (ST-2). LUC affects drop rates, crit and chances in activities.
 - LU-2: LUC is evaluated per action. Its value y lies in [-100, +100]: positive means luck, negative means bad luck. The player's alignment x runs from evil to good.
 - LU-3: Every divine (Aedra and Daedra) has a fixed alignment value and a set of assigned activities. Activities cover crafts and trades (alchemy, hunting, lockpicking, sneaking), social acts (trade, intimidation, speech), and combat and magic. Every action belongs to an activity and has an alignment.
 - LU-4: A favour table stores the player's standing with each divine, bounded to -100 to +100 (an unbounded raw value maps to this range, -inf to -100 and +inf to +100). For an action, y is the favour with the divine assigned to its activity.

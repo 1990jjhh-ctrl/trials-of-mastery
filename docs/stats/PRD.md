@@ -148,13 +148,13 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, detection, sp
 - ST-18: The module does not decide when a level-up happens. It reacts to every player level-up, whether vanilla, Experience or another mod triggered it. Level changes that bypass the game's level-up (the console's `setlevel`, for example) grant no free points and don't advance stats (ST-6), just as vanilla grants them no perk point.
 - ST-19: The stat box replaces the vanilla level-up menu, and the +10 Health/Magicka/Stamina reward is never granted. The stat box opens at the moment the vanilla level-up menu would open. The level-up itself (level and perk point) is applied right away; only spending the free points can wait.
 - ST-20: Each level-up grants free stat points; the number is set in the INI (default 3). Free points go to the accumulated points and do not raise the cost of trained points.
-- ST-21: While free points are unspent, the stat box shows "Level Up" and "Cancel" instead of "OK". "Cancel" closes the box and keeps the points for later; they are stored in the save. "Level Up" shows the number of free points and one button per stat with its current value, plus "Back", and repeats until all points are spent or the player goes back. Registered stats appear like core stats, unless they are opted out of free points (ST-2). When the stats and "Back" do not fit in one box, the box first shows one button per stat group, and each group shows its stats. Each stat belongs to a group, set in the stats file.
+- ST-21: While free points are unspent, the stat box shows "Level Up" and "Cancel" instead of "OK". "Cancel" closes the box and keeps the points for later; they are stored in the save. "Level Up" shows the number of free points and one button per stat with its current value, plus "Back", and repeats until all points are spent or the player goes back. Registered stats appear like core stats, unless they are opted out of free points (ST-2). Each stat button shows the stat's label and current value (ST-24). When the stats and "Back" do not fit in one box, the box first shows one button per stat group, and each group shows its stats. Each stat belongs to a group, set in the stats file; a registered stat that names no group belongs to the group of its namespace (`Luck:LUC` to Luck). Groups are ordered as in the stats file, then the namespace groups in registration order, with Other last. After the last point the box returns to its first page.
 - ST-22: Another module can take over point assignment through the API. The stat box then shows only "OK", and that module distributes the points (the professions module does this by class profile).
 - ST-23: Perk points stay as in vanilla.
 
 ### 7.6 Display
 
-- ST-24: While the skills menu is open, a key opens the stat box. It lists each stat's effective value and its XP toward the next point, and closes with "OK" (or offers "Level Up" and "Cancel", ST-21). The key and a gamepad button are set in the INI, and the mod description names the default key. This works with and without SkyUI.
+- ST-24: While the skills menu is open, a key opens the stat box. It lists the stats in sections, one per group and in the order of ST-21, each under the group's name. A stat's line shows its label, its effective value and its XP toward the next point, e.g. `Intelligence (INT) 12 (40 / 100 XP)`. The label is the stat's display name and short name, both set in the stats file (core stats: `Strength` and `STR`, and so on); a stat without a short name uses its name without the namespace, and a stat without a display name shows only the short name (`LUC 7`). The module that owns a namespace group can fill that group's section itself through the API (ST-26); the section then shows only the module's lines, for example the luck module's `Lockpicking +1 %`. Numbers below 10 000 are shown in full, larger ones with three significant digits and K, M, B or T (`10 / 1.64M XP`); an infinite cost (ST-7) shows as ∞. The box closes with "OK" (or offers "Level Up" and "Cancel", ST-21). The key and a gamepad button are set in the INI, and the mod description names the default key. This works with and without SkyUI.
 - ST-25 (Could): While the skills menu is open, a hint shows the key, if this works without changing the skills menu (§5). A later optional module can replace the display through the API.
 
 ### 7.7 API
@@ -167,6 +167,7 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, detection, sp
   - adding and removing base adjustments under a key (ST-3);
   - events: XP gained, point gained, level-up points granted, stat advanced, stat ascended;
   - registering stats, skill-to-stat mappings, actions and XP modifiers;
+  - filling the stat box section of the module's namespace group (ST-24): in the C++ API a function the box calls when it opens, in the Papyrus API lines the module sets and updates;
   - registering and removing crit shift functions under a key (ST-13), in the C++ API only: a Papyrus function cannot run while a hit is computed;
   - reading an action's check value for an actor and applying an action's training;
   - setting the multiplier, `r` and N, claiming and performing advancing, and ascending stats with a formula;
@@ -175,7 +176,7 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, detection, sp
 ### 7.8 Configuration
 
 - ST-27: The INI holds only single settings: `r` (ST-6, default 2, which equals the mastery module's `r_N` (MA-1) at 0 Ascensions), N (ST-6, default 5), free points per level-up, the stat box key and the override of ST-28. Tables live in four JSON files, which players and other mods patch by the merge rules in the [overview](../PRD.md#4-shared-constraints):
-  - stats: group, default base, race adjustments (keyed by the race's editor ID) and effects per stat;
+  - stats: group, display name and short name, default base, race adjustments (keyed by the race's editor ID) and effects per stat;
   - skills: the skill-to-stat mapping and the primary to secondary split;
   - actions: checks and training per action;
   - incompatible: the mods ST-28 detects, by plugin or SKSE plugin name.
@@ -194,7 +195,7 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, detection, sp
 | Lockpicking | DEX, PER | Speech | CHA, WIS |
 | Pickpocket | DEX, PER | Smithing | STR, INT |
 
-Default stat groups, named after the guardian stones: Warrior (STR, CON, END), Mage (INT, WIS), Thief (DEX, PER), Other (CHA and registered stats that name no group).
+Default stat groups, named after the guardian stones: Warrior (STR, CON, END), Mage (INT, WIS), Thief (DEX, PER), Other (CHA). A registered stat that names no group belongs to its namespace's group (ST-21).
 
 Once the JSON files exist, they hold the values and this section only describes them. Names of stats, skills and actions added by other mods are namespaced (`<Mod>:<Name>`).
 
