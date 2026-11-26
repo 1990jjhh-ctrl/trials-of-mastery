@@ -43,6 +43,7 @@ if(TOM_BUILD_TESTS)
         tests/unit/effects_test.cpp
         tests/unit/json_schema.cpp
         tests/unit/persistence_test.cpp
+        tests/unit/sanitizer_seed_test.cpp
         tests/unit/settings_test.cpp
         tests/unit/stat_box_format_test.cpp
         tests/unit/stat_box_model_test.cpp
