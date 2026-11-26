@@ -222,10 +222,10 @@ TEST_CASE("XP rounds down and the cost rounds up without floating-point noise", 
 		CHECK(fixture.lineOf("Strength") == "Strength (STR) 11 (0 / 110 XP)");
 	}
 
-	SECTION("an infinite cost shows as infinity")
+	SECTION("an infinite cost shows as --")
 	{
 		REQUIRE(fixture.stats.setValues(kPlayer, kStr, StatValue{ .base = 10, .accumulated = 0, .active = 2000, .xp = 0.0 }));
-		CHECK(fixture.lineOf("Strength") == "Strength (STR) 2010 (0 / ∞ XP)");
+		CHECK(fixture.lineOf("Strength") == "Strength (STR) 2010 (0 / -- XP)");
 	}
 
 	SECTION("large numbers take a suffix")

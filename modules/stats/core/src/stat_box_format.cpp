@@ -12,8 +12,8 @@ namespace tom::stats
 
 namespace
 {
-// U+221E INFINITY in UTF-8.
-constexpr std::string_view kInfinity = "\xE2\x88\x9E";
+// The message box font has no infinity sign (U+221E), so +inf shows as this.
+constexpr std::string_view kInfinite = "--";
 constexpr std::string_view kUnknown = "?";
 
 // Up to this many digits a number shows in full.
@@ -83,7 +83,7 @@ std::string formatStatNumber(double value, Rounding rounding)
 		return std::string(kUnknown);
 	}
 	if (value == std::numeric_limits<double>::infinity()) {
-		return std::string(kInfinity);
+		return std::string(kInfinite);
 	}
 	const double whole = rounding == Rounding::Down ? std::floor(value) : std::ceil(value);
 	const bool   negative = whole < 0.0;
