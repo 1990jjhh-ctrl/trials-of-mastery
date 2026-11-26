@@ -31,6 +31,8 @@ struct ActorStats
 	std::map<StatId, std::map<BaseAdjustmentKey, std::int32_t>> baseAdjustments;
 	std::map<StatId, std::int32_t>                              defaultBases;
 	double                                                      multiplier = 1.0;
+
+	bool operator==(const ActorStats&) const = default;
 };
 
 // Sets the base to the default base plus the stat's base adjustments and

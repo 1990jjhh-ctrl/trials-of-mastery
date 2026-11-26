@@ -46,6 +46,7 @@ if(TOM_BUILD_TESTS)
         tests/unit/stats_service_events_test.cpp
         tests/unit/stats_service_level_up_test.cpp
         tests/unit/stats_service_progression_test.cpp
+        tests/unit/stats_service_save_state_test.cpp
         tests/unit/stats_service_test.cpp
         tests/unit/stat_value_test.cpp
         tests/unit/table_folder_test.cpp

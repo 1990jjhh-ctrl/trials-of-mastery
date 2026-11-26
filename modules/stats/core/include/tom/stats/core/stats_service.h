@@ -45,6 +45,17 @@ struct StatReading
 	bool operator==(const StatReading&) const = default;
 };
 
+// What the service holds for one actor, as restoreActor() takes it back
+// (for C8).
+struct ActorSnapshot
+{
+	std::string        race;  // the race's editor ID
+	ActorStats         stats;
+	ContributionLedger ledger;
+
+	bool operator==(const ActorSnapshot&) const = default;
+};
+
 // The AvDeltas of each actor whose actor-value contributions changed.
 using AvDeltasByActor = std::map<ActorId, std::vector<AvDelta>>;
 
@@ -182,6 +193,13 @@ public:
 	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> setRace(ActorId actor, std::string_view race);
 
 	[[nodiscard]] bool hasActor(ActorId actor) const;
+
+	// The known actors in ascending order.
+	[[nodiscard]] std::vector<ActorId> actorIds() const;
+
+	// The actor's race, stats and contributions, dormant stats included, for
+	// a save. Fails for an unknown actor.
+	[[nodiscard]] std::expected<ActorSnapshot, Error> actorSnapshot(ActorId actor) const;
 
 	// Fails for an unknown actor and for a stat that is not active.
 	[[nodiscard]] std::expected<StatReading, Error> read(ActorId actor, const StatId& stat) const;

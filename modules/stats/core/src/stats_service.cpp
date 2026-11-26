@@ -144,6 +144,23 @@ bool StatsService::hasActor(ActorId actor) const
 	return actors_.contains(actor);
 }
 
+std::vector<ActorId> StatsService::actorIds() const
+{
+	std::vector<ActorId> ids;
+	ids.reserve(actors_.size());
+	for (const auto& [actor, state] : actors_) {
+		ids.push_back(actor);
+	}
+	return ids;
+}
+
+std::expected<ActorSnapshot, Error> StatsService::actorSnapshot(ActorId actor) const
+{
+	return findActor(actor).transform([](const ActorState* state) {
+		return ActorSnapshot{ .race = state->race, .stats = state->stats, .ledger = state->ledger };
+	});
+}
+
 std::expected<StatReading, Error> StatsService::read(ActorId actor, const StatId& stat) const
 {
 	const auto state = findActor(actor);
