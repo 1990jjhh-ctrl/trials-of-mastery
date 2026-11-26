@@ -33,6 +33,7 @@ using tom::stats::DroppedActor;
 using tom::stats::initStat;
 using tom::stats::kRaceAdjustmentKey;
 using tom::stats::kSaveFormatVersion;
+using tom::stats::restore;
 using tom::stats::SaveState;
 using tom::stats::serialize;
 using tom::stats::Settings;
@@ -343,4 +344,104 @@ TEST_CASE("malformed fields are rejected with their place", "[persistence][malfo
 	json wrongType = valid;
 	wrongType["actors"] = json::object();
 	rejects(wrongType, "the actors is not an array");
+}
+
+TEST_CASE("a restored save gives a new service the saved state and no AvDeltas", "[persistence][restore]")
+{
+	const StatsService saved = savedService();
+	const Bytes        bytes = serialize(saved);
+	MapResolver        resolver;
+	auto               state = deserialize(bytes, resolver);
+	REQUIRE(state);
+	// The same tables and the same registrations this session, another N.
+	StatsService stats = service(Settings{ .advanceInterval = 7 });
+	REQUIRE(stats.registerStat(kLuck));
+
+	const auto result = restore(stats, std::move(*state));
+
+	CHECK(result.deltas.empty());
+	CHECK(result.errors.empty());
+	REQUIRE(stats.actorIds() == saved.actorIds());
+	for (const ActorId actor : saved.actorIds()) {
+		CHECK(stats.actorSnapshot(actor) == *saved.actorSnapshot(actor));
+		CHECK(stats.learningBonus(actor) == *saved.learningBonus(actor));
+	}
+	CHECK(stats.pendingPoints() == 3);
+	CHECK(stats.r() == 1.75);
+	CHECK(stats.registry().registeredStats() == std::vector<StatId>{ kLuck, kDormant });
+	CHECK(stats.registry().isDormant(kDormant));
+	CHECK_FALSE(stats.registry().isDormant(kLuck));
+	CHECK(stats.n() == 7);
+	// Saved again, it gives the same bytes.
+	CHECK(serialize(stats) == bytes);
+}
+
+TEST_CASE("a restored stat whose owner did not register it is dormant", "[persistence][restore][dormant]")
+{
+	const StatsService saved = savedService();
+	MapResolver        resolver;
+	auto               state = deserialize(serialize(saved), resolver);
+	REQUIRE(state);
+	StatsService stats = service();
+
+	const auto result = restore(stats, std::move(*state));
+
+	CHECK(stats.registry().isDormant(kLuck));
+	// Its values stay, and its Magicka contribution is taken off.
+	CHECK(stats.actorSnapshot(kPlayer)->stats.values == saved.actorSnapshot(kPlayer)->stats.values);
+	const double magicka = saved.actorSnapshot(kPlayer)->ledger.contributions.at("Magicka");
+	CHECK(result.deltas == AvDeltasByActor{ { kPlayer, { AvDelta{ .actorValue = "Magicka", .delta = -magicka } } } });
+}
+
+TEST_CASE("restoring replaces the save state the service held", "[persistence][restore]")
+{
+	StatsService stats = service();
+	REQUIRE(stats.addActor(kNpc, "NordRace"));
+	stats.addDormantStat(StatId{ "Mod:Other" });
+	stats.onPlayerLevelUp(1);
+	SaveState state;
+	state.r = 2.5;
+	state.actors[kPlayer].race = "ImperialRace";
+
+	(void)restore(stats, state);
+
+	CHECK(stats.actorIds() == std::vector<ActorId>{ kPlayer });
+	CHECK_FALSE(stats.registry().contains(StatId{ "Mod:Other" }));
+	CHECK(stats.pendingPoints() == 0);
+	// The restored actor gets the default bases it has none of.
+	CHECK(stats.read(kPlayer, kCon)->base == 10);
+}
+
+TEST_CASE("a saved r that setR rejects keeps the r the service was built with", "[persistence][restore]")
+{
+	StatsService stats = service(Settings{ .costGrowth = 3.0 });
+	REQUIRE(stats.setR(2.5));
+
+	SaveState state;
+	state.r = 0.5;
+	state.pendingPoints = 2;
+
+	const auto result = restore(stats, state);
+
+	CHECK(stats.r() == 3.0);
+	REQUIRE(result.errors.size() == 1);
+	CHECK_THAT(result.errors[0].message, ContainsSubstring("saved r 0.5"));
+	CHECK(stats.pendingPoints() == 2);
+}
+
+TEST_CASE("saved negative pending points are rejected and leave none pending", "[persistence][restore]")
+{
+	StatsService stats = service();
+	stats.onPlayerLevelUp(1);
+
+	SaveState state;
+	state.r = 2.0;
+	state.pendingPoints = -1;
+
+	const auto result = restore(stats, state);
+
+	CHECK(stats.pendingPoints() == 0);
+	REQUIRE(result.errors.size() == 1);
+	CHECK_THAT(result.errors[0].message, ContainsSubstring("-1 pending points"));
+	CHECK(stats.r() == 2.0);
 }

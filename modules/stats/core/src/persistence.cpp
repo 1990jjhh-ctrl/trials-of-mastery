@@ -429,4 +429,26 @@ std::expected<SaveState, Error> deserialize(std::span<const std::uint8_t> bytes,
 	}
 }
 
+RestoreResult restore(StatsService& service, SaveState state)
+{
+	RestoreResult result;
+	service.resetSaveState();
+	for (const auto& id : state.registeredStats) {
+		service.addDormantStat(id);
+	}
+	if (const auto r = service.setR(state.r); !r) {
+		result.errors.push_back(Error{ std::format("saved {}", r.error().message) });
+	}
+	if (const auto points = service.restorePendingPoints(state.pendingPoints); !points) {
+		result.errors.push_back(Error{ std::format("saved {}", points.error().message) });
+	}
+	for (auto& [id, actor] : state.actors) {
+		auto deltas = service.restoreActor(id, actor.race, std::move(actor.stats), std::move(actor.ledger));
+		if (!deltas.empty()) {
+			result.deltas.emplace(id, std::move(deltas));
+		}
+	}
+	return result;
+}
+
 }

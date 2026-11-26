@@ -58,7 +58,7 @@ struct SaveState
 	std::vector<StatId> registeredStats;
 	// By the current actor ID.
 	std::map<ActorId, ActorSnapshot> actors;
-	// For the log.
+	// For the log; restore() does not use it.
 	std::vector<DroppedActor> droppedActors;
 };
 
@@ -72,5 +72,21 @@ struct SaveState
 // missing field, a number outside its range, negative points or XP, or
 // arrays and objects nested deeper than the format needs. Throws nothing.
 [[nodiscard]] std::expected<SaveState, Error> deserialize(std::span<const std::uint8_t> bytes, ActorIdResolver& resolver);
+
+struct RestoreResult
+{
+	// The AvDeltas of the actors whose contributions differ from the saved
+	// ones, e.g. from a stat that is dormant now.
+	AvDeltasByActor deltas;
+	// Saved values the service rejected, for the log.
+	std::vector<Error> errors;
+};
+
+// Puts a save state into the service: resetSaveState(), then each saved
+// registered stat the service does not know as a dormant one, r, the pending
+// points and each actor. A saved r that setR() rejects keeps the value the service was built
+// with, and rejected pending points leave none pending; both are reported in
+// errors. N stays as it is (Stats plan, assumption 16).
+[[nodiscard]] RestoreResult restore(StatsService& service, SaveState state);
 
 }
