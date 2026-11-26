@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <format>
+#include <map>
 #include <string>
 #include <utility>
 
@@ -100,6 +101,22 @@ std::vector<AvDelta> StatsService::train(ActorState& player, const std::vector<S
 		}
 	}
 	return deltas;
+}
+
+ActorStats StatsService::withoutInactiveStats(ActorStats stats) const
+{
+	const auto inactive = [this](const auto& entry) { return !checkActive(entry.first); };
+	std::erase_if(stats.values, inactive);
+	std::erase_if(stats.modifiers, inactive);
+	return stats;
+}
+
+std::unexpected<Error> StatsService::missingCheck(const std::string& action) const
+{
+	if (!tables_.actions.contains(action)) {
+		return rejected(std::format("unknown action '{}'", action));
+	}
+	return rejected(std::format("action '{}' has no check", action));
 }
 
 template <typename Event>
@@ -488,6 +505,31 @@ std::expected<std::vector<AvDelta>, Error> StatsService::applyTraining(const std
 	return findActor(player_).transform([&](ActorState* state) {
 		return train(*state, actionTrainingXp(tables_.actions, xpModifiers_, action, input));
 	});
+}
+
+std::expected<double, Error> StatsService::checkValue(ActorId actor, const std::string& action, const SkillLevels& skillLevels) const
+{
+	if (!skillLevels) {
+		return rejected(std::format("no skill levels for the check of action '{}'", action));
+	}
+	const auto state = findActor(actor);
+	if (!state) {
+		return std::unexpected(state.error());
+	}
+	const auto value = tom::stats::checkValue(tables_.actions, action, withoutInactiveStats((*state)->stats), skillLevels);
+	if (!value) {
+		return missingCheck(action);
+	}
+	return *value;
+}
+
+std::expected<double, Error> StatsService::checkResult(const std::string& action, double i) const
+{
+	const auto result = tom::stats::checkResult(tables_.actions, action, i);
+	if (!result) {
+		return missingCheck(action);
+	}
+	return *result;
 }
 
 bool StatsService::setXpModifier(const XpModifierOwner& owner, XpModifierKind kind, const std::string& name, double m)

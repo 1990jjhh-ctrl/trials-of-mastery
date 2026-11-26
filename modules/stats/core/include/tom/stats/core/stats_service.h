@@ -5,6 +5,7 @@
 // calls nothing in the game.
 
 #include "tom/stats/core/actor_stats.h"
+#include "tom/stats/core/check.h"
 #include "tom/stats/core/config/settings.h"
 #include "tom/stats/core/config/tables.h"
 #include "tom/stats/core/effects.h"
@@ -341,6 +342,19 @@ public:
 	// the actions table does not have and for an unknown player.
 	[[nodiscard]] std::expected<std::vector<AvDelta>, Error> applyTraining(const std::string& action, double input);
 
+	// The check value I of the action for the actor (ST-15, ST-16), as
+	// tom::stats::checkValue() gives it for the actor's stats and the skill
+	// levels. Only the active stats count: a stat that is not active counts
+	// as one the actor does not have (Stats plan, assumption 8). Fails for an
+	// unknown actor, an action the actions table does not have, an action
+	// without a check and an empty skillLevels.
+	[[nodiscard]] std::expected<double, Error> checkValue(ActorId actor, const std::string& action, const SkillLevels& skillLevels) const;
+
+	// The game quantity the action's check gives for I = i, e.g. the
+	// lockpicking sweet spot (Stats plan, assumption 7). Fails for an action
+	// the actions table does not have and for an action without a check.
+	[[nodiscard]] std::expected<double, Error> checkResult(const std::string& action, double i) const;
+
 	// Sets or replaces, or removes, the owner's XP modifier for the skill or
 	// action (ST-17), as XpModifierRegistry::set() and remove() do.
 	// setXpModifier returns false, and changes nothing, for what set()
@@ -393,6 +407,13 @@ private:
 	// each amount, after all of them are added, so a receiver may call the
 	// service. Returns the AvDeltas of the whole change.
 	[[nodiscard]] std::vector<AvDelta> train(ActorState& player, const std::vector<StatXp>& gains);
+
+	// The stats without the values and modifiers of the stats that are not
+	// active, which effective() then counts as missing.
+	[[nodiscard]] ActorStats withoutInactiveStats(ActorStats stats) const;
+
+	// Why the action has no check: it is unknown, or it has none.
+	[[nodiscard]] std::unexpected<Error> missingCheck(const std::string& action) const;
 
 	// Sends the event, if there is a receiver.
 	template <typename Event>
