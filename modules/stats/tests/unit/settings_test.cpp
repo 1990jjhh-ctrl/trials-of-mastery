@@ -42,6 +42,7 @@ TEST_CASE("an empty INI gives the built-in defaults", "[settings]")
 	CHECK(result.settings.costGrowth == 2.0);
 	CHECK(result.settings.advanceInterval == 5);
 	CHECK(result.settings.freePointsPerLevelUp == 3);
+	CHECK(result.settings.statBoxLinesPerPage == 15);
 	CHECK_FALSE(result.settings.allowIncompatibleMods);
 }
 
@@ -56,6 +57,7 @@ FreePointsPerLevelUp = 4
 [StatBox]
 Key = 48
 GamepadButton = 276
+LinesPerPage = 2
 
 [Compatibility]
 AllowIncompatibleMods = true
@@ -67,6 +69,7 @@ AllowIncompatibleMods = true
 	CHECK(result.settings.freePointsPerLevelUp == 4);
 	CHECK(result.settings.statBoxKey == 48);
 	CHECK(result.settings.statBoxGamepadButton == 276);
+	CHECK(result.settings.statBoxLinesPerPage == 2);
 	CHECK(result.settings.allowIncompatibleMods);
 }
 
@@ -88,6 +91,20 @@ TEST_CASE("an r of 1 or less is rejected and the default stays", "[settings]")
 		CHECK(result.settings.costGrowth == Settings{}.costGrowth);
 		CHECK(keysOf(result.errors) == std::vector<std::string>{ "Progression.CostGrowth" });
 	}
+}
+
+TEST_CASE("lines per page below 2 or not an integer are rejected and the default stays", "[settings]")
+{
+	for (const char* text : { "1", "0", "-4", "many", "20.5" }) {
+		const auto result = loadSettings(std::string("[StatBox]\nLinesPerPage = ") + text + "\n");
+
+		CHECK(result.settings.statBoxLinesPerPage == Settings{}.statBoxLinesPerPage);
+		CHECK(keysOf(result.errors) == std::vector<std::string>{ "StatBox.LinesPerPage" });
+	}
+
+	const auto result = loadSettings("[StatBox]\nLinesPerPage = 1\n");
+	REQUIRE(result.errors.size() == 1);
+	CHECK(result.errors[0].message == "'1' must be an integer from 2 to 2147483647; keeping 15");
 }
 
 TEST_CASE("values that are not valid are rejected and the defaults stay", "[settings]")

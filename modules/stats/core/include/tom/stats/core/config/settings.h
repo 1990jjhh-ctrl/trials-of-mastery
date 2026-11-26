@@ -20,9 +20,13 @@ struct Settings
 	// SKSE key codes: a DirectX scan code (1 to 255) for the key, a gamepad
 	// code (266 to 281) for the button. The defaults are decision D7 of the
 	// Stats plan.
-	std::uint32_t statBoxKey = 37;                // K
-	std::uint32_t statBoxGamepadButton = 279;     // Y
-	bool          allowIncompatibleMods = false;  // the override of ST-28
+	std::uint32_t statBoxKey = 37;             // K
+	std::uint32_t statBoxGamepadButton = 279;  // Y
+	// ST-24: at least 2, a group name and one line. 15 is the line count of
+	// the core stats' overview, a placeholder until spike S2 of the Stats plan
+	// measures how many lines the box shows.
+	std::int32_t statBoxLinesPerPage = 15;
+	bool         allowIncompatibleMods = false;  // the override of ST-28
 
 	bool operator==(const Settings&) const = default;
 };

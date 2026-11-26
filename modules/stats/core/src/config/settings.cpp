@@ -111,6 +111,9 @@ constexpr std::int64_t kLastKeyboardKey = 255;
 constexpr std::int64_t kFirstGamepadButton = 266;
 constexpr std::int64_t kLastGamepadButton = 281;
 
+// A stat box page needs a group name and one line (ST-24).
+constexpr std::int64_t kMinLinesPerPage = 2;
+
 }
 
 SettingsResult loadSettings(std::string_view text)
@@ -129,6 +132,7 @@ SettingsResult loadSettings(std::string_view text)
 	reader.readInteger("Progression", "FreePointsPerLevelUp", settings.freePointsPerLevelUp, 0, kInt32Max);
 	reader.readInteger("StatBox", "Key", settings.statBoxKey, kFirstKeyboardKey, kLastKeyboardKey);
 	reader.readInteger("StatBox", "GamepadButton", settings.statBoxGamepadButton, kFirstGamepadButton, kLastGamepadButton);
+	reader.readInteger("StatBox", "LinesPerPage", settings.statBoxLinesPerPage, kMinLinesPerPage, kInt32Max);
 	reader.read("Compatibility", "AllowIncompatibleMods", settings.allowIncompatibleMods, parseBool, "true or false");
 	return result;
 }
