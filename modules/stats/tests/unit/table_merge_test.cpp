@@ -474,3 +474,55 @@ TEST_CASE("without a validator every entry is accepted", "[merge][entry]")
 	CHECK(result.merged.contains("WIS"));
 	CHECK(ofKind(result, Diagnostic::Kind::InvalidEntry).empty());
 }
+
+TEST_CASE("the key order follows each file's text, files in merge order", "[merge][key-order]")
+{
+	const std::vector<TableSource> sources{
+		{ "patch.json", R"({"WIS": {"base": 1}, "STR": {"base": 2}, "AGI": {"base": 3}})" },
+		{ "_default.json", R"({"STR": {"base": 10}, "DEX": {"base": 10}, "CON": {"base": 10}})" },
+	};
+
+	const auto result = mergeTable(sources, FakePlugins{});
+
+	CHECK(result.keyOrder == std::vector<std::string>{ "STR", "DEX", "CON", "WIS", "AGI" });
+}
+
+TEST_CASE("a key removed with null leaves the key order and comes back at the end", "[merge][key-order]")
+{
+	const std::vector<TableSource> sources{
+		{ "_default.json", R"({"STR": {"base": 10}, "DEX": {"base": 10}, "CON": {"base": 10}})" },
+		{ "a.json", R"({"DEX": null, "MISSING": null})" },
+		{ "b.json", R"({"DEX": {"base": 4}})" },
+	};
+
+	const auto result = mergeTable(sources, FakePlugins{});
+
+	CHECK(result.keyOrder == std::vector<std::string>{ "STR", "CON", "DEX" });
+}
+
+TEST_CASE("a skipped file adds no key to the key order", "[merge][key-order]")
+{
+	const auto sources = withDefault({
+		{ "a.json", R"({"INT": {"base": 4}, "WIS": {"group": "Mage"}})" },
+		{ "b.json", "not json" },
+		{ "c.json", R"({"CON": {"base": 6}})" },
+	});
+
+	const auto result = mergeTable(sources, FakePlugins{}, json::object(), needsBase);
+
+	CHECK(result.keyOrder == std::vector<std::string>{ "STR", "CON" });
+}
+
+TEST_CASE("a key only the registered entries set is not in the key order", "[merge][key-order]")
+{
+	const json                     registered = json::parse(R"({"Luck:LUC": {"base": 0}, "Mod:AGI": {"base": 1}})");
+	const std::vector<TableSource> sources{
+		{ "_default.json", R"({"STR": {"base": 10}})" },
+		{ "patch.json", R"({"Mod:AGI": {"group": "Thief"}})" },
+	};
+
+	const auto result = mergeTable(sources, FakePlugins{}, registered);
+
+	CHECK(result.merged.contains("Luck:LUC"));
+	CHECK(result.keyOrder == std::vector<std::string>{ "STR", "Mod:AGI" });
+}
