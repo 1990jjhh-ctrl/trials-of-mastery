@@ -8,7 +8,7 @@ Every change goes through a branch and a pull request; nothing is committed to `
 
 1. **Branch** from `main`, named `<module>/<task-id>-<slug>`, e.g. `stats/t1.1-build-setup`.
 2. **Commit** one logical change per commit, so the pull request can be reviewed commit by commit. Fix a commit that is not merged yet by folding the fix into it (`git commit --fixup=<commit>`, then `git rebase --autosquash main`) instead of adding a fix-up commit.
-3. **Check** locally before opening the pull request: `scripts/test.sh`, `lib/skyrim-mod-toolchain/scripts/format.sh --check modules` and `lib/skyrim-mod-toolchain/scripts/lint.sh build/core modules` ([README.md#build-and-test](README.md#build-and-test)). A change to a plugin also needs `scripts/build.sh` and the in-game checks its task names.
+3. **Check** locally before opening the pull request: `scripts/test.sh`, `lib/skyrim-mod-toolchain/scripts/format.sh --check modules` and `lib/skyrim-mod-toolchain/scripts/lint.sh build/core modules` ([README.md#build-and-test](README.md#build-and-test)). A change to a plugin also needs `scripts/build.sh` and the in-game checks its task names. A change to C++ code under `modules/*/core` also runs the unit tests under the sanitizers, `cmake --workflow --preset core-asan`.
 4. **Open a pull request** against `main`. It is merged with a merge commit, so the branch's commits land on `main` as they are.
 
 ## Commit messages
@@ -26,7 +26,7 @@ Titles follow [Conventional Commits](https://www.conventionalcommits.org): `<typ
 - `lib/skyrim-mod-toolchain/scripts/format.sh --check modules`;
 - `lib/skyrim-mod-toolchain/scripts/lint.sh build/core modules`;
 - `scripts/build.sh`, the cross build of the plugin DLLs (`plugin` preset) and the runtime-import check;
-- in a separate job that runs after these, `cmake --workflow --preset core-asan`, the native unit tests under AddressSanitizer and UndefinedBehaviorSanitizer (not part of step 3).
+- in a separate job that runs after these, `cmake --workflow --preset core-asan`, the native unit tests under AddressSanitizer and UndefinedBehaviorSanitizer.
 
 The toolchain is set up by the action in `lib/skyrim-mod-toolchain` ([README.md#setup](README.md#setup)). Nothing in the game is covered, so run the in-game checks a task names yourself.
 
