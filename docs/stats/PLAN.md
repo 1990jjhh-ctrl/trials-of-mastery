@@ -55,7 +55,7 @@ These are the user's answers to the decisions in the first draft of this plan.
 6. **Numeric types:** base, point counts and modifiers are signed 32-bit integers. XP, cost, multiplier and effective stat are `double`.
 7. **Check-to-result mapping (OQ-5):** each check in the actions file gets an output mapping from `I` to the game quantity (sweet-spot size, pickpocket chance, price factor). The mapping is a curve with placeholder parameters.
 8. **Registered stats whose owner is missing at load:** their saved data is kept but dormant. It is not shown and has no effects, and it comes back when the owner registers again. The PRD does not cover this case.
-9. **Custom Skills Framework (CSF):** how the module learns about a CSF skill level-up is not known (spike S7). Until then ST-16 is covered for vanilla skills, skills above 100 and level-ups reported through the API.
+9. **Custom Skills Framework (CSF):** how the module learns about a CSF skill level-up, and where CSF computes skill XP, is not known (spike S7). Until then ST-16 is covered for vanilla skills, skills above 100 and level-ups reported through the API, and ST-12 for vanilla skills.
 10. **Game version (confirmed, [overview §4](../PRD.md#4-shared-constraints)):** 1.6.x and newer, tested on 1.7.104. T1.2 checks the Address Library and CommonLibSSE-NG support for 1.7.104.
 11. **Base adjustments ([ST-3](PRD.md#71-stats)):** an actor's stored base already contains its adjustments, and each adjustment is stored under its key. Setting a key changes the base by the difference to the key's old value; removing a key takes its value off the base. The race adjustment is one such key, owned by the module and not settable through the API. When the stats table's race adjustment for an actor's race differs from the stored one (a patch changed, or the actor changed race), the module sets the key again, so the base and with it the effects change by the difference (ST-3). A changed **default base** reaches existing actors the same way, as ST-3 and [§8](PRD.md#8-constraints) define: each actor stores the default base last applied per stat, and the module moves the base by the difference.
 12. **Effect reference ([ST-9, ST-10](PRD.md#73-effects)):** relative effects measure from the default base last applied to the actor's stat (`ActorStats::defaultBases`, C4), which is the stored form of "default base" for an existing actor. A stat with no default base applied counts it as 0, like any missing value in `ActorStats`; So C7 never gives a stat a non-zero base without `initStat`, and C8 restores the default base last applied together with every base.
@@ -661,7 +661,7 @@ Each spike is a throwaway prototype in the plugin with a time box. Its result is
 | S5 | How can DEX set the base crit chance for physical attacks and for spells, given that vanilla has no spell crits (ST-13)? | G8 |
 | S6a | Hook points for every default training action of ST-15. | G9a to G9c |
 | S6b | Hook points for the default checks of ST-15. Persuasion and intimidation are dialogue conditions in vanilla. | G10a to G10c |
-| S7 | How does the module learn about Custom Skills Framework skill level-ups (ST-16)? Do skill level-up events still fire above 100 with Beyond Mastery and Experience? | G4 |
+| S7 | How does the module learn about Custom Skills Framework skill level-ups (ST-16)? Do skill level-up events still fire above 100 with Beyond Mastery and Experience? Where does CSF compute the XP of a skill use (its `Skill::Advance` and its own Mod Skill Use perk entry call), and where can it be multiplied after that call, for uses only, as the [S3 result](#s3-result) does for vanilla skills (ST-12)? | G4, G6 |
 | S8 | Papyrus build with the Creation Kit compiler under Wine (D5). This starts from the current error "Wine Mono is not installed": installing Wine Mono or .NET in the Wine prefix is a **user action**. Then compile a stub script with a native function from a CMake custom command, with the Skyrim path as a cache variable, and bind it from the plugin. | A2 |
 
 #### S1 result
@@ -731,6 +731,57 @@ Not covered (*user decision:* the user checks the first three by hand later; U1 
 - **Other resolutions:** only 1280×720 was tried.
 - **Other hint routes (ST-25):** only the HUD message was tried.
 
+#### S3 result
+
+Run on 2026-11-27 on 1.7.104 with Experience, Custom Skills Framework (CSF), Beyond Mastery and SkyUI, through the skyrim-mcp bridge in `qasmoke`. **Multiplying the XP right after the game's perk entry for skill use stacks multiplicatively with Guardian Stones, Rested and Lover's Comfort, and with Experience and CSF loaded.** The prototype is `modules/stats/plugin/src/SkillXpSpike.cpp` and `.h` on the branch `stats/s3-skill-xp-spike` (3ea4935), with the trampoline raised from 28 to 56 bytes in `main.cpp`. That branch stays unmerged, as the reference for G6.
+
+How vanilla computes skill XP (disassembly of `SkyrimSE.exe` 1.7.104; Address Library IDs are AE):
+
+- Every skill use goes through the virtual `Actor::UseSkill` (vtable slot 0xF7), which for the player is `PlayerCharacter::UseSkill` (40488, CommonLibSSE-NG's `AddSkillExperience`), reached through the `PlayerCharacter` vtable (208040). `player.advskill` (22367) calls the same slot with no object and action 0, so it takes the full use path.
+- 40488 calls the skill XP routine (41561) at +0x25 with "is a use" set. In 41561, in order:
+  1. the cap check (Beyond Mastery patches it at +0x6F);
+  2. the skill's AVSK record through 27244;
+  3. for a use, XP = `useMult × points + useOffset` (+0xF1);
+  4. writes `advanceSkill` (player+0xAF8 on 1.7.104, read from the code);
+  5. `BGSEntryPoint::HandleEntryPoint` (23526) with entry point 0x16, Mod Skill Use, on the address of the XP (call at +0x158);
+  6. adds the XP and runs the level loop.
+- A whole level granted at once (skill books, trainers, `incpcs`) goes through `PlayerSkills::IncrementSkill` (41562), which calls 41561 at +0x98 with "is a use" cleared. XP is then what is missing to the next level, and step 5 still runs.
+- The vanilla skill XP bonuses are Mod Skill Use (0x16) Multiply perks, so all of them act inside that one `HandleEntryPoint` call, and several of them multiply:
+  - Guardian Stones, ×1.2 for their skills: Warrior (spell 000E5F4C, perk 000E5F4A), Mage (000E5F47, 000E5F49), Thief (000E5F45, 000E5F46); Lover (000E5F5A, 000E5F57), ×1.15 for all skills;
+  - Rested (000FB981) ×1.05, Well Rested (000FB984) ×1.10, Lover's Comfort (000CDA1D) ×1.15.
+- Fortify <Skill> effects raise the skill level, not the XP. The `<Skill>SkillAdvance` actor values are not used by vanilla bonuses.
+
+The prototype's hooks:
+
+1. `use_skill`: `write_vfunc` on vtable 208040, slot 0xF7, calling the previous value.
+2. `xp_routine_call`: the call at 40488+0x25, found by scanning for the unique bytes `C6 44 24 28 01 89 44 24 20` followed by an `E8` within 0x40 bytes. Any call target is accepted and called, since Experience redirects it. It sets a thread-local "inside a use" flag around the call.
+3. `perk_entry`: the call at 41561+0x158, found by scanning for the unique `B9 16 00 00 00` followed by an `E8` to 23526 within 0x400 bytes. It applies its factor after the perk entry only while the flag of hook 2 is set, so whole-level grants are left alone.
+
+Evidence (plugin log, console). Base XP is One-Handed's `useMult` 6.3 with `useOffset` 0:
+
+| Check | Result |
+| --- | --- |
+| Install log | Experience redirects both 40488+0x25 and 41562+0x98 (to `Experience.dll`+0x56aa). Vtable slot 0xF7 already held `CustomSkills.dll`+0x319a0 (CSF hooks `UseSkill`); hook 1 chained behind it. The `useMult × points` bytes at +0xF1 are vanilla. Hook 3 is at 41561+0x158. No site was missed. |
+| `player.advskill onehanded 10` | 63 XP, perk factor ×1.0. |
+| + Warrior Stone (`player.addspell 000E5F4C`) | 75.6 (×1.20). |
+| + Well Rested (000FB984) | 83.16 (×1.32 = 1.2 × 1.1: the perk entries multiply). |
+| Alteration with both | 33 (×1.10: the Warrior Stone does not cover it). |
+| Factor ×2 at hook 3 (`perk_entry`) | 166.32 = 63 × 1.32 × 2. |
+| Factor ×2 at hook 1 (`use_skill`) | points 10 to 20, 126 before the perks, 166.32 after. |
+| Factor ×2 at hook 2 (`xp_routine_call`) | 166.32. |
+| `player.incpcs onehanded` (whole level) | 343.455 to 453.361 (×1.32 from the vanilla perks); the ×2 of hook 3 not applied. Logged with no `use_skill` or `xp_routine_call` line. |
+
+All three hooks stack multiplicatively with the perks. Hooks 1 and 2 scale the points before `useOffset` is added, so they are purely multiplicative only for a skill whose `useOffset` is 0, as One-Handed's is. Hook 3 scales the whole XP after the perks, whatever the offset, which is why G6 uses it.
+
+Not covered:
+
+- **A real skill use:** the bridge's mouse clicks did not cast a spell (Magicka stayed at 85), so only `player.advskill` was used. It takes the same vtable path, but G6 checks a real use by hand.
+- **Fortify potions:** not tried in game; per the disassembly they raise the level and do not touch the XP.
+- **A skill at Experience's cap**, and Beyond Mastery's cap check above 100.
+- **CSF custom skills:** their XP goes through CSF's own `Skill::Advance`, not 40488 or 41561, so hook 3 does not see it. This belongs to S7 and G6 (assumption 9).
+- **The thread** the hooks run on was not recorded (assumption 15).
+- **1.6.x:** untested. The IDs are AE IDs and the sites come from the scans; whether the 1.6.x functions keep the same byte patterns is not checked.
+
 ### Phase 4: Game layer (`modules/stats/plugin/`)
 
 #### G1 Configuration loading in game
@@ -789,14 +840,25 @@ Not covered (*user decision:* the user checks the first three by hand later; U1 
 
 #### G6 Learning speed and skill XP modifiers
 
-- **Goal:** multiply skill XP by the capped learning bonus from C5, the other skill XP bonuses and the per-skill modifiers, as ST-12 and ST-17 define.
+- **Goal:** multiply the skill XP of a skill use, for vanilla and CSF skills, by the capped learning bonus from C5 and the per-skill modifiers, on top of the other skill XP bonuses, as ST-12 and ST-17 define. A whole level granted at once (skill book, trainer) stays as the game gives it (ST-12).
 - **Covers:** ST-12, ST-17 (skill XP).
-- **Interfaces:** the S3 hook multiplies by `1 + learningBonus` (C7) and `skillXpFactor` (C7a). It needs the factor inside the game's XP computation, so it follows G1's thread rule for values needed at once (assumption 15).
-- **Verification:** `in-game` plus `log`:
-  - the logged skill XP gain changes by the expected factor;
-  - with a Guardian Stone active, the gain is the product of both bonuses;
-  - with the stats at the curve limit, the stat factor is ×3 at most, and outside bonuses still apply on top.
-- **Depends on:** S3, G1, C7a. The curve depends on OQ-4.
+- **Interfaces:** the hook from the [S3 result](#s3-result), without the prototype's `use_skill` hook:
+  - Replaces the call to `BGSEntryPoint::HandleEntryPoint` (23526) at 41561+0x158 (Mod Skill Use, 0x16). The replacement calls 23526, then multiplies the XP it was passed by `(1 + learningBonus) × skillXpFactor(skill)` (C7, C7a). So the factor applies after the game's perks and whatever `useOffset` the skill has.
+  - Applies the factor only inside a skill use: a thread-local flag set around the call at 40488+0x25, which calls the replaced call's current target, since Experience redirects it. A whole-level grant through 41562 runs 41561 without the flag and keeps its XP. An equivalent way to tell a use from a grant is fine, if `incpcs` stays unchanged.
+  - Finds each site by its scan from the S3 result (exactly one match). If a site is not found, for example because another plugin patched it, nothing is patched and the log says why; the learning bonus is then off. *User decision (2026-11-27):* this is logged only, with no warning on screen. It chains with Experience and CSF as in the S3 result, and the trampoline grows by the two calls.
+  - Needs the factor inside the game's XP computation, so it follows G1's thread rule for values needed at once (assumption 15). The hook logs the thread it runs on.
+  - CSF custom skills: *user decision (2026-11-27):* they get the learning bonus too (ST-12, "every skill"). Their XP goes through CSF's own `Skill::Advance`, not 41561, so G6 adds a second hook at the site S7 finds after CSF's Mod Skill Use perk entry call. It applies the same `(1 + learningBonus) × skillXpFactor(skill)` with the CSF skill's ID, for uses only, and finds and skips its site the same way.
+  - Open technical points, not user decisions: the thread the hooks run on (G1's rule, assumption 15), a skill at Experience's cap and Beyond Mastery above 100, and the 1.6.x byte patterns ([S3 result](#s3-result)).
+- **Verification:** `in-game` plus `log`, with One-Handed at 63 XP for `player.advskill onehanded 10` (S3 result):
+  - the logged XP gain is 63 × the expected factor;
+  - with the Warrior Stone and Well Rested, it is 63 × 1.32 × the factor; Alteration with both gives 33 × the factor (×1.10 from the perks, since the stone does not cover it);
+  - with the stats at the curve limit, the stat factor is ×3 at most, and the perks still apply on top;
+  - `player.incpcs onehanded` gives what the game gives (×1.32 with both perks), without the factor;
+  - the install log names both sites and the CSF site, with Experience, CSF and Beyond Mastery loaded;
+  - a use of a CSF skill gives CSF's XP × the factor, and a CSF skill's whole-level grant, if CSF has one, stays unchanged;
+  - a skill at Experience's cap and one above 100 with Beyond Mastery get the factor or stay capped as the game decides, without a crash;
+  - a real skill use (a spell cast or a hit), checked by the user by hand if the bridge still cannot cast, gives the same factor as `advskill`.
+- **Depends on:** S3, S7 (CSF site), G1, C7a, and PR #52 (ST-12 limited to skill uses). The curve depends on OQ-4.
 
 #### G7 END damage redirection
 
@@ -963,7 +1025,7 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
   - C1, C2 and C4 run in parallel. C9 runs in parallel with C8 and C7a; C8 and C7a share the service files, so they run one after the other, in either order.
   - The stat box amendments of PR #31: C9a only adds files and runs at any time. C3a runs in parallel with C8, C7a and C9a. C9b follows C3a, C9a and the merge of C8 (`stat_value.h`), and runs in parallel with C7a. C3b (PR #33) runs at any time. C9c follows C9b and C3b. C9d (S2) runs at any time once PR #41 is merged. U1 needs C9c and C9d, A1 needs C9b.
   - The compatibility warning (PR #43): C3c runs at any time; C10 follows C3c. Both must merge before K1, which also needs U1.
-  - G6, G7, G8, G9a to G9c and G10a to G10c run in parallel once their spike and G1 or G3 are done.
+  - G6, G7, G8, G9a to G9c and G10a to G10c run in parallel once their spike and G1 or G3 are done; G6 also waits for S7.
 
 ## Risks
 
@@ -988,4 +1050,5 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
 - **Check hooks (S6b):** persuasion and intimidation in vanilla are dialogue conditions on Speech, not a formula. Replacing them may need condition-function hooks, or may not be possible without an ESP, which the "no ESP" constraint rules out.
 - **Magic crit (S5):** vanilla has no spell crits. Adding them may need a damage hook that overlaps with S4 and with combat overhauls.
 - **NPC actor-value persistence:** permanent modifiers on non-persistent NPCs reset when the actor respawns, but the ledger in the co-save does not. G2 and G3 must reconcile this, and OQ-1 may change how much NPC data exists at all.
-- **CSF (S7):** if CSF exposes no level-up signal, ST-16 for CSF skills needs CSF users or a patch to report level-ups through the API.
+- **Skill XP hook (S3, G6):** the hook sits inside the game's skill XP routine, at a call that Experience and CSF leave alone on 1.7.104. A plugin that patches that call, or a 1.6.x build with other bytes, makes the scan fail and turns the learning bonus off, with a log line only (*user decision, 2026-11-27:* no warning on screen) ([S3 result](#s3-result)). The same holds for the CSF site from S7.
+- **CSF (S7):** if CSF exposes no level-up signal, ST-16 for CSF skills needs CSF users or a patch to report level-ups through the API. CSF skill XP also bypasses the vanilla G6 hook; if S7 finds no site after CSF's perk entry call, CSF skills get no learning bonus, which ST-12 requires (user decision, 2026-11-27), so that outcome goes back to the user.
