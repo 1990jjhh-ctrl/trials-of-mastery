@@ -1,5 +1,6 @@
 #include "Messaging.h"
 
+#include "CsfSkillSpike.h"
 #include "LevelUpHook.h"
 
 #include <cstdint>
@@ -40,6 +41,10 @@ std::string_view messageName(std::uint32_t type)
 void onMessage(Messaging::Message* message)
 {
 	SKSE::log::info("SKSE message {} ({})", messageName(message->type), message->type);
+	if (message->type == Messaging::kPostLoad) {
+		registerCsfSkillSpikeListener();
+		return;
+	}
 	if (message->type != Messaging::kDataLoaded) {
 		return;
 	}
@@ -47,6 +52,7 @@ void onMessage(Messaging::Message* message)
 	if (!installLevelUpHook()) {
 		SKSE::log::error("The vanilla LevelUp menu is not replaced");
 	}
+	installCsfSkillSpike();
 }
 }
 
