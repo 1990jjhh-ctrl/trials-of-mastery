@@ -1,5 +1,6 @@
 #include "Messaging.h"
 
+#include "CritSpike.h"
 #include "LevelUpHook.h"
 
 #include <cstdint>
@@ -47,6 +48,7 @@ void onMessage(Messaging::Message* message)
 	if (!installLevelUpHook()) {
 		SKSE::log::error("The vanilla LevelUp menu is not replaced");
 	}
+	installCritSpike();
 }
 }
 
