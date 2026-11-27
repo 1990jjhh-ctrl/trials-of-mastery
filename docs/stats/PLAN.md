@@ -12,7 +12,7 @@ Build the Stats module as an SKSE plugin for Skyrim AE. The formula and configur
 
 ## Conventions used in this plan
 
-- **OQ-n** is the n-th bullet in [PRD §10 Open questions](PRD.md#10-open-questions): OQ-1 NPC values, OQ-2 default effect coefficients, OQ-3 skill XP split, OQ-4 learning-speed curve, OQ-5 check weights, OQ-6 END redirection share, OQ-7 direct activity XP amounts, OQ-8 warn or disable on an incompatible mod, OQ-9 STR XP for unarmed attacks by glove weight, OQ-10 PER XP for fighting. A task that depends on an OQ ships a **placeholder default** in a config file and marks it `TODO(OQ-n)` there and in the log at load. The plan does not answer any OQ.
+- **OQ-n** is the n-th bullet in [PRD §10 Open questions](PRD.md#10-open-questions): OQ-1 NPC values, OQ-2 default effect coefficients, OQ-3 skill XP split, OQ-4 learning-speed curve, OQ-5 check weights, OQ-6 END redirection share, OQ-7 direct activity XP amounts, OQ-8 warn or disable on an incompatible mod (closed, see below), OQ-9 STR XP for unarmed attacks by glove weight, OQ-10 PER XP for fighting. **OQ-8 is closed** (user decision, 2026-11-27, PR #45): a detected incompatible mod disables the module (ST-28), and the bullet left the PRD. The IDs keep their numbers, so the `TODO(OQ-9)` and `TODO(OQ-10)` markers in the data stay valid; from OQ-9 on, OQ-n is the (n − 1)-th bullet of the PRD list. A task that depends on an OQ ships a **placeholder default** in a config file and marks it `TODO(OQ-n)` there and in the log at load. The plan does not answer any OQ.
 - **Verification types:** `unit` means a ctest test that runs on the dev host without the game. `log` means a check of the plugin log (`Documents/My Games/Skyrim Special Edition/SKSE/<plugin>.log`). `in-game` means a manual step list that the task adds to `modules/stats/tests/ingame/<task-id>.md`. In-game checks use the console command `cgf "<Script>.<Function>" ...` against the Papyrus API once A2 exists. Before A2 they use log dumps. Every check that starts the game, `in-game` or a `log` check of a game run, including the spike runs, runs from the main session only ([CLAUDE.md#workflow](../../CLAUDE.md#workflow)). An implementer writes the step list and reports the check as not run; the main session runs it and records the result.
 - **Parallel** means the tasks share no files except one-line additions to a CMake source list.
 - Code style: the user's `write-code` skill applies to all C++ and Papyrus, unless the project states a deviation.
@@ -30,6 +30,7 @@ These are the user's answers to the decisions in the first draft of this plan.
 | D5 | The Creation Kit Papyrus compiler under Wine (`<Skyrim>/Papyrus Compiler/PapyrusCompiler.exe`), with the vanilla sources and `TESV_Papyrus_Flags.flg` from `<Skyrim>/Data/Source/Scripts`. Caprica is not used |
 | D6 | Assumptions confirmed or moved into the PRDs; see below |
 | D7 | The stat box opens with key K and gamepad button Y by default (user decision, 2026-11-24). ST-24 asks for a key and a button in the INI but names neither |
+| D8 | U2, the skills-menu hint of ST-25 (Could), is dropped for v1 (user decision, 2026-11-27), since the HUD route of S2 does not work ([S2 result](#s2-result)) |
 
 ## Assumptions and open questions
 
@@ -71,6 +72,15 @@ These are the user's answers to the decisions in the first draft of this plan.
     - *User decisions for the pages of PR #33 (C9c):* the lines per page count every line of a page's text, the group names and the empty lines between sections included. "Back" is the leftmost button on every level-up page, paged or not, so merged C9's "Back" moves from last to first there: on the first page of a list it leaves the list as before, from the second page on it goes to the previous page. The paged group list is headed `Level Up (1 / 2)`.
     - *Plan choices for the pages of PR #33 (C9c):* a page fills with whole sections in order; a section that does not fit on the current page starts a new one. A section longer than a page gets pages of its own: `k = ⌈n / (L − 1)⌉` pages for `n` lines and `L` lines per page, the first `n mod k` of them one line longer. A paged button list has `k = ⌈n / (B − 2)⌉` pages for `n` buttons and `B` buttons per box, spread the same way, with room for "Back" and "Next". Button rows: "Back" first, then the page's own buttons, then "Next" last, on the overview (ST-24) and on the level-up pages alike. "Back" from "Level Up" returns to the overview page it was opened from.
     - *Plan choice:* ST-24 names no suffix after T; from 1000T on the box shows the whole number of T (`2500T`). NaN and −∞, which no stat value should reach, show as `?`.
+18. **Compatibility warning (from PRs #43 and #45, C3c, C10, K1):** [ST-27 and ST-28](PRD.md#79-compatibility) set the buttons, the per-mod dismissal through an INI list, that a dismissed mod still disables the module and is logged, that with the INI override the module runs and shows no warning while the log still records the detected mods, and that a box that cannot show at the main menu shows when the player first starts or loads a game (user decisions, 2026-11-27). A detected mod disables the module (OQ-8, closed). The rest are plan choices, not user decisions:
+    - The list is the single INI setting `[Compatibility] DismissedWarnings`, so ST-27's "only single settings" holds: one key whose value is a comma-separated list of incompatible-file entry names (the JSON keys, such as `Requiem` or `Valhalla Combat`, which the log and the box show), e.g. `DismissedWarnings = Requiem, Valhalla Combat`. Each item is trimmed of spaces and tabs; empty items are left out and a repeated item counts once. An item matches an entry name exactly (case-sensitive, as JSON keys are). An item that names no entry of the current table is kept in the list and ignored, so a dismissal survives a table patch that drops the entry for a while. The shipped INI has the key with an empty value.
+    - So the list stays unambiguous, an incompatible entry name must not be empty, contain a comma or a control character, or start or end with whitespace; the C3 validator rejects such an entry, and its file is skipped (C3c).
+    - The box names only the detected mods that are not dismissed, and is not shown when every detected mod is dismissed, nor at all with the override set. The log lists every detected mod at every load, each marked dismissed or not, and says whether the module is disabled or runs through the override.
+    - Buttons: "OK" first, then "Don't show again". "OK" changes nothing. "Don't show again" adds the mods the box named to the list (the existing items keep their order and text, new ones are appended) and writes the list back.
+    - Write-back: the plugin reads the INI file from disk again at the press, so edits made since the load stay, changes only the `DismissedWarnings` line of `[Compatibility]` by a text edit (C10's `setIniValue`; every other line, comment and line ending stays as it was) and writes the file through a temporary file in the same folder that then replaces it. Without an INI file, it writes a new one with only that section and key. A failed write is logged; the box closes as usual and the warning shows again at the next load.
+    - The box is the message box of U1's adapter (`verticalButtons = true`); ST-28 does not say how its buttons are laid out.
+    - Escape and the gamepad's cancel button on the warning stay open (assumption 19).
+19. **Escape and the gamepad's cancel button in a message box (open; user decision 2026-11-27: U1 and K1 report what the game does first, the user decides afterwards):** ST-21 and ST-24 close the stat box only through its buttons ("OK", or "Level Up" and "Cancel"), and ST-28 names only "OK" and "Don't show again" for the warning. Neither says what Escape or the gamepad's cancel button (B) does while a box is open. The factory's `MessageBoxData` has `isCancellable` false and `cancelButtonIndex` −1 ([S2 result](#s2-result)); U1 and K1 keep these defaults and record what happens (in-game checks), and the expected behaviour is the user's to decide.
 
 ## Tasks
 
@@ -235,7 +245,36 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 - **Scope:** `modules/stats/core/include/tom/stats/core/config/settings.h`, `modules/stats/core/src/config/settings.cpp`, `modules/stats/data/trials-of-mastery-stats.ini`, `modules/stats/tests/unit/settings_test.cpp`.
 - **Interfaces:** `Settings` gains `std::int32_t statBoxLinesPerPage`, read from `[StatBox] LinesPerPage`. A value below 2 (a page needs a heading and a line, assumption 17) or not an integer is rejected and reported like the other keys, and the default stays. The default is a placeholder until S2 measures it, and U1 sets the measured value in `settings.h` and the shipped INI; the INI comment says so. The placeholder is 15, the line count of the core stats' overview. S2 keeps 15 ([S2 result](#s2-result)); U1 drops the placeholder comments.
 - **Verification:** `unit` tests check that a missing key gives the default, a valid value is read, 1, 0, a negative and a non-integer value are rejected with the key in the error, and the shipped INI still loads without errors and matches the built-in defaults; `scripts/test.sh`, the format check and lint pass.
-- **Depends on:** C3. **Parallel** with every other task: no other task changes these files.
+- **Depends on:** C3. **Parallel** with every other task except C3c, which changes the same files after it.
+
+#### C3c Dismissed compatibility warnings in the INI (C3 amendment)
+
+- **Goal:** the INI list of the mods whose ST-28 warning was dismissed, and the rule on incompatible entry names that keeps that list unambiguous (PR #43, assumption 18).
+- **Covers:** ST-27 (the dismissed mods), ST-28 (dismissal per mod).
+- **Scope:**
+  - `modules/stats/core/include/tom/stats/core/config/settings.h`, `modules/stats/core/src/config/settings.cpp`, `modules/stats/data/trials-of-mastery-stats.ini`, `modules/stats/tests/unit/settings_test.cpp`;
+  - `modules/stats/core/src/config/tables.cpp` (the incompatible validator only), `modules/stats/data/schema/incompatible.schema.json`, `modules/stats/tests/unit/tables_test.cpp`.
+- **Interfaces:**
+  - `Settings` gains `std::vector<std::string> dismissedIncompatibleMods`, read from `[Compatibility] DismissedWarnings` by the rule of assumption 18. Every text is a valid list, so the key adds no errors; a missing key gives an empty list.
+  - Two free functions in `settings.h`, so the read and the write-back (C10, K1) use one format:
+
+    ```cpp
+    // Splits a comma-separated list: items trimmed of spaces and tabs, empty
+    // items left out, a repeated item kept once, at its first position.
+    [[nodiscard]] std::vector<std::string> parseNameList(std::string_view text);
+    // Joins the items with ", ".
+    [[nodiscard]] std::string formatNameList(std::span<const std::string> names);
+    ```
+
+  - The incompatible validator (`entryValidator(Table::Incompatible)`) rejects an entry whose name is empty, contains a comma or a control character, or starts or ends with whitespace; the schema gets the same rule as `propertyNames` with a `pattern`. The names of the shipped default pass.
+  - The shipped INI loses the `TODO(OQ-8)` comment line on `AllowIncompatibleMods` (OQ-8 is closed) and gets `DismissedWarnings =` (empty) in `[Compatibility]`, with a comment: the names are those of the incompatible file, separated by commas; the "Don't show again" button adds to the list; removing a name shows its warning again; a listed mod still disables the module.
+- **Verification:** `unit` tests check that:
+  - a missing key and an empty value give an empty list, and the shipped INI still loads without errors and matches the built-in defaults; `grep -rn 'OQ-8' modules/stats` finds nothing;
+  - `Requiem, Valhalla Combat` gives both names; ` Requiem ,,Valhalla Combat, ` gives the same two; `Requiem, Requiem` gives one; a name with inner spaces (`Skyrim Attributes Mod.`) is kept whole;
+  - `formatNameList` of the two names gives `Requiem, Valhalla Combat`, and `parseNameList(formatNameList(x)) == x` for a list of valid entry names;
+  - an incompatible patch with an entry named `A, B`, ` Requiem`, `Requiem ` or with a newline is skipped as a whole with an `InvalidEntry` diagnostic (C2), and the shipped default validates against the changed schema;
+  - `scripts/test.sh`, the format check and lint pass.
+- **Depends on:** C3 (and C3b, merged, which last changed `settings.h`). **Parallel** with every open task: no other open task changes these files.
 
 #### C4 Stat values, cost and progression
 
@@ -554,6 +593,59 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
 - **Verification:** `unit` tests check that `+inf` gives `--` rounded down and up, NaN and `-inf` still give `?`, and C9b's infinite-cost line reads `Strength (STR) 2010 (0 / -- XP)`; no `∞` (`\xE2\x88\x9E`) is left under `modules/stats` (`grep -rn $'\xE2\x88\x9E' modules/stats` finds nothing); `scripts/test.sh`, the format check and lint pass.
 - **Depends on:** C9a, C9b (both merged) and PR #41 merged, so the PRD says `--`. **Parallel** with every other task: no open task changes these files.
 
+#### C10 Incompatible-mod detection and warning (core part of ST-28)
+
+- **Goal:** the game-independent part of ST-28 as pure functions, so K1 only adapts the game's plugin lists, the message box and the file write: which entries are detected, which of them the warning names, its text, the list after "Don't show again", and the INI text with that list written in (assumption 18).
+- **Covers:** ST-28 (detection, warning content, dismissal per mod), ST-27 (writing the one setting back).
+- **Scope:** new `modules/stats/core/include/tom/stats/core/compatibility.h`, `modules/stats/core/src/compatibility.cpp`, `modules/stats/core/include/tom/stats/core/config/ini_edit.h`, `modules/stats/core/src/config/ini_edit.cpp`, `modules/stats/tests/unit/compatibility_test.cpp`, `modules/stats/tests/unit/ini_edit_test.cpp`, with their lines in `modules/stats/CMakeLists.txt`.
+- **Interfaces** (names may follow the existing style):
+
+  ```cpp
+  // compatibility.h
+  // The names of the entries with a loaded game plugin or SKSE plugin, in
+  // table order. File names compare case-insensitively (ASCII); a game
+  // plugin is its name plus extension, e.g. "Requiem" ".esp".
+  [[nodiscard]] std::vector<std::string> detectIncompatible(const IncompatibleTable& table,
+      std::span<const PluginInfo> gamePlugins, std::span<const std::string> sksePlugins);
+
+  // The detected mods the warning names: those not in `dismissed`, in the
+  // order of `detected`; none when the override of ST-28 is set.
+  [[nodiscard]] std::vector<std::string> warnedMods(std::span<const std::string> detected,
+      std::span<const std::string> dismissed, bool allowIncompatibleMods);
+
+  // The warning's body text, naming each mod on a line of its own.
+  [[nodiscard]] std::string warningText(std::span<const std::string> mods);
+
+  // The buttons, in order: "OK", "Don't show again".
+  enum class WarningButton { Ok, DontShowAgain };
+
+  // `dismissed` with each of `named` appended that it does not hold yet.
+  [[nodiscard]] std::vector<std::string> withDismissed(std::span<const std::string> dismissed,
+      std::span<const std::string> named);
+
+  // config/ini_edit.h
+  // Returns `text` with `key` in `section` set to `value`. Sections and keys
+  // match case-insensitively, as loadSettings reads them. Only the value of
+  // the first matching key line changes; a missing key is added after the
+  // last key line of the first matching section, a missing section at the
+  // end. All other bytes stay as they are; an added line uses the line ending
+  // the text already uses (CRLF or LF).
+  [[nodiscard]] std::string setIniValue(std::string_view text, std::string_view section,
+      std::string_view key, std::string_view value);
+  ```
+
+  - `warningText` says that the module is disabled because of the mods it names (ST-28, OQ-8 closed); the exact text is fixed in the test. With the default overview's limits in mind ([S2 result](#s2-result)), the text needs one line per mod plus at most three lines, each under about 40 characters, so a warning for every default entry still shows at full size.
+  - K1 writes the list with `formatNameList` (C3c) and `setIniValue(text, "Compatibility", "DismissedWarnings", ...)`.
+- **Verification:** `unit` tests check that:
+  - `detectIncompatible` finds an entry by its game plugin (`requiem.ESP` matches `Requiem.esp`), by its SKSE plugin, and by both only once; an entry none of whose files is loaded, and a race overhaul's plugin that is not in the table (`Imperious - Races of Skyrim.esp`), give nothing; the result follows the table order;
+  - `warnedMods` of `Requiem`, `Valhalla Combat` with `Valhalla Combat` dismissed is `Requiem`; with both dismissed it is empty; a dismissed name that is not detected changes nothing; the match is case-sensitive; with `allowIncompatibleMods` true it is empty whatever is dismissed;
+  - `warningText` of two mods is the exact expected text, with each name on a line of its own;
+  - `withDismissed` of `A` and `B, A` is `A, B`; of an empty list and `A` is `A`;
+  - `setIniValue` replaces only the value in `DismissedWarnings = Requiem` and leaves the comments, the other keys and sections and the line endings byte for byte; it matches `[compatibility]` and `dismissedwarnings`; it adds the key to a `[Compatibility]` section without it, after `AllowIncompatibleMods`; it appends the section to a text without it, and to an empty text; it keeps CRLF in a CRLF file; a key of the same name in another section is left alone;
+  - for each of these, `loadSettings` (C3) of the result reads the new list and every other setting unchanged, with no errors;
+  - `scripts/test.sh`, the format check and lint pass.
+- **Depends on:** C3c (`parseNameList`, `formatNameList`, and the name rule). **Parallel** with every other task: it only adds files and their CMake lines.
+
 
 ### Phase 3: Spikes (uncertain game hooks)
 
@@ -562,7 +654,7 @@ Each spike is a throwaway prototype in the plugin with a time box. Its result is
 | ID | Question | Feeds |
 | --- | --- | --- |
 | S1 | Can the vanilla LevelUp menu be suppressed while the level and the perk point are still applied right away and the +10 is never granted (ST-19)? Where is the moment the menu would open? Does it behave the same with Experience and with a level-up menu mod? Fallback if suppression fails: let the vanilla flow run and revert the +10 (must be invisible to the player). | G5 |
-| S2 | Can a native message box open over the skills menu with SkyUI and without it, and can a key or gamepad button be caught only while that menu is open (ST-24)? Are the default key K and gamepad button Y free while the skills menu is open, with and without SkyUI, so that pressing them there does nothing else? If not, report it before U1 starts; changing the defaults is the user's decision. How many buttons fit in one box (ST-21 grouping)? How many lines of text does the box show before it cuts off or scrolls, with and without SkyUI, and does a long line wrap and take two (the default of `LinesPerPage`, C3b)? How many buttons fit with SkyUI? How long can a button text be (`Constitution (CON) 10`), and does the box's font have ∞ (U+221E)? The sectioned overview of C9b has 15 lines with the core stats alone. Is a hint possible without changing the skills menu (ST-25)? | U1, U2, C9d |
+| S2 | Can a native message box open over the skills menu with SkyUI and without it, and can a key or gamepad button be caught only while that menu is open (ST-24)? Are the default key K and gamepad button Y free while the skills menu is open, with and without SkyUI, so that pressing them there does nothing else? If not, report it before U1 starts; changing the defaults is the user's decision. How many buttons fit in one box (ST-21 grouping)? How many lines of text does the box show before it cuts off or scrolls, with and without SkyUI, and does a long line wrap and take two (the default of `LinesPerPage`, C3b)? How many buttons fit with SkyUI? How long can a button text be (`Constitution (CON) 10`), and does the box's font have ∞ (U+221E)? The sectioned overview of C9b has 15 lines with the core stats alone. Is a hint possible without changing the skills menu (ST-25)? | U1, C9d (U2, dropped for v1, D8) |
 | S3 | Where can skill XP be multiplied so that it stacks multiplicatively with Guardian Stones, Fortify effects and other mods (ST-12, ST-17), instead of replacing them or being overwritten? | G6 |
 | S4 | Where can incoming damage be split before it reaches Health, separately for physical and magic damage (ST-11)? Does that hook coexist with combat overhauls? | G7 |
 | S5 | How can DEX set the base crit chance for physical attacks and for spells, given that vanilla has no spell crits (ST-13)? | G8 |
@@ -761,7 +853,7 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
 - **Covers:** ST-21, ST-22, ST-24.
 - **Interfaces:**
   - An input sink on `RE::BSInputDeviceManager` that is active only while `RE::StatsMenu` is open (tracked by a `RE::MenuOpenCloseEvent` sink) and uses the INI key and gamepad button, as in the S2 prototype ([S2 result](#s2-result); branch `stats/s2-stat-box-spike`, not merged).
-  - A message-box adapter that renders a `Page` and returns the pressed index: a `RE::MessageBoxData` from the `MessageDataFactoryManager` creator, with `bodyText`, `buttonText`, `verticalButtons = true` (ST-24, PR #41) and an `RE::IMessageBoxCallback`, queued with `RE::MessageBoxMenu::QueueMessage` (52271). The other fields keep the factory defaults S2 logged.
+  - A message-box adapter that shows a body text with button labels (a `Page` here, K1's warning later) and returns the pressed index: a `RE::MessageBoxData` from the `MessageDataFactoryManager` creator, with `bodyText`, `buttonText`, `verticalButtons = true` (ST-24, PR #41) and an `RE::IMessageBoxCallback`, queued with `RE::MessageBoxMenu::QueueMessage` (52271). The other fields keep the factory defaults S2 logged, among them `isCancellable` false and `cancelButtonIndex` −1 (assumption 19).
   - Each opening builds a new `StatBoxModel` (C9b) over the service, the `Tables` G1 built (the service takes its own copy, so the plugin keeps one for the box), the plugin's `StatBoxSections` (A1, A2) and a `StatBoxLayout` of `maxButtons` 10 (S2, with vertical buttons) and `Settings::statBoxLinesPerPage`. The adapter applies `PressResult::deltas` through G3 and logs `PressResult::error` and `StatBoxModel::errors()`.
   - `LinesPerPage` keeps its default of 15 (C3b): 15 lines show at full size, and the box stays readable up to about 30 lines, which leaves room for lines that wrap at about 40 characters. U1 drops the placeholder comments in `settings.h` and the shipped INI.
 - **Verification:** `in-game`:
@@ -773,16 +865,15 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
   - with `LinesPerPage` lowered in the INI, the overview splits into pages with "Back" and "Next" and a long section shows its parts; with a low button count (a test build), the group list and a group's stats are paged; with and without SkyUI;
   - unspent points survive Cancel and save/load;
   - group pages appear with a registered test stat, and a registered test stat without a group shows in its namespace's section;
-  - with a point-assignment claim, only "OK" shows.
+  - with a point-assignment claim, only "OK" shows;
+  - Escape while the box is open, on the overview with "OK", on the overview with "Level Up" and "Cancel", and on a level-up page; and, by hand (the bridge sends no gamepad input), the gamepad's cancel button (B) on the same pages. For each, record what happens: the box closes (and whether the callback runs, with which index, or not at all), the skills menu closes as well, the skills menu closes behind a box that stays, or nothing; whether the unspent points stay pending; and whether the key opens the box again afterwards. The PRD does not define this (assumption 19), so U1 does not pick a behaviour: it keeps the factory defaults (`isCancellable` false, `cancelButtonIndex` −1), reports the result and asks the user which behaviour is wanted, for example Escape acting as "Cancel" or "OK". A change follows only from the user's answer.
 - **Depends on:** S2, C3b, C9c, C9d, G5.
 
-#### U2 Skills-menu hint (Could)
+#### U2 Skills-menu hint (Could): dropped for v1
 
-- **Goal:** show the key hint in the skills menu, but only if S2 shows this works without changing that menu.
-- **Covers:** ST-25.
-- **Verification:** `in-game`. The hint is visible, and the skills menu is unchanged with SkyUI and with CSF.
-- **Depends on:** S2, U1. Drop this task if S2 is negative.
-- **Status:** the HUD route does not work: a HUD message sent when the skills menu opens is not visible over it, nor after it closes ([S2 result](#s2-result)). No other route was tried. Whether to drop U2 or try another route first is the user's decision.
+- **Status:** dropped for v1 (user decision, 2026-11-27, D8). No task depends on it, and it is not in the order below. ST-25 stays a Could in the PRD; nothing in v1 implements it.
+- **Why:** the only route S2 tried, a HUD message sent when the skills menu opens, is not visible over the skills menu, nor after it closes ([S2 result](#s2-result)). Other routes were not tried.
+- **Original scope, kept for a later version:** show the key hint in the skills menu, only if this works without changing that menu (ST-25); `in-game`: the hint is visible, and the skills menu is unchanged with SkyUI and with CSF. It would depend on U1.
 
 ### Phase 6: API
 
@@ -828,29 +919,49 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
 
 #### K1 Incompatible-mod detection
 
-- **Goal:** check the entries of the incompatible table at load against the loaded game plugins and SKSE plugins, then log, warn and disable, or run with the INI override.
-- **Covers:** ST-28.
-- **Interfaces:** uses `IncompatibleTable` (C3, loaded by G1). Adds a module "disabled" state: hooks stay inert, and the API reports that the module is disabled.
+- **Goal:** check the entries of the incompatible table at load against the loaded game plugins and SKSE plugins, then log, warn and disable, or run with the INI override; the warning names each detected mod that is not dismissed, and "Don't show again" dismisses them in the INI (PR #43, assumption 18).
+- **Covers:** ST-28, ST-27 (writing the dismissed mods back).
+- **Scope:** the plugin only (`modules/stats/plugin/src/`); the logic is C10's.
+- **Interfaces:**
+  - Uses `IncompatibleTable` (C3, loaded by G1), `Settings::dismissedIncompatibleMods` (C3c) and C10's functions. The game adapter turns the loaded game plugins (the same list as G1's `PluginQuery`) and the loaded SKSE plugin DLLs into C10's inputs. The table names SKSE plugins by DLL file name; `SKSE::GetPluginInfo` takes a plugin name, so K1 checks whether that name is the DLL's file name or the name the plugin declares, and if it is the latter, finds the DLLs another way (for example the modules loaded in the process) and says so in the code.
+  - Adds a module "disabled" state: hooks stay inert, and the API reports that the module is disabled.
+  - At every load, the log lists each detected mod with the files that matched and whether it is dismissed, and whether the module is disabled or runs through the override.
+  - The warning: when `warnedMods` (C10) is not empty, a box through U1's message-box adapter with `warningText` and the buttons "OK" and "Don't show again" (`WarningButton`). "Don't show again" writes `withDismissed(...)` back to `trials-of-mastery-stats.ini` as assumption 18 describes, with `formatNameList` (C3c) and `setIniValue` (C10), and logs the new list or the failed write. The dismissal takes effect at the next load; the module stays disabled in this session.
+  - With the override `AllowIncompatibleMods` set, the module runs, no box is queued (`warnedMods` is empty), and the log still records the detected mods (ST-28).
+  - When the box shows: ST-28 says "at load". K1 queues it once the main menu is open after `kDataLoaded`, if a box queued there shows over the main menu (S2 tested only over the skills menu). If it does not, K1 shows it at the first `kPostLoadGame` or `kNewGame` of the session instead, as ST-28 allows, and records which of the two it uses in the code and in `K1.md`.
 - **Verification:**
-  - `unit`: entries match against a fake plugin list.
-  - `in-game` plus `log`: with a dummy `Requiem.esp`, the log shows the detection, a warning appears, and the module stays inert, or runs with the override set; a patch file adding an entry is honoured.
-- **Depends on:** G1, A1 (the disabled state must reach the API). The behaviour depends on OQ-8.
+  - `unit`: the detection, warning content, dismissal and INI write are C10's tests; K1 adds unit tests only for logic it does not take from C10.
+  - `in-game` plus `log`, with the shipped INI unless a step says otherwise, steps in `modules/stats/tests/ingame/K1.md`:
+    - with a dummy `Requiem.esp`, the log shows the detection, the box names `Requiem` with "OK" and "Don't show again" stacked, and the module stays inert; with the override set, the module runs, no box shows, and the log still lists `Requiem` as detected;
+    - with dummy `Requiem.esp` and `ValhallaCombat.esp`, the box names both; "OK" changes nothing in the INI, and the box shows again at the next start;
+    - "Don't show again" writes `DismissedWarnings = Requiem, Valhalla Combat`, leaves every other line of the INI as it was (`diff` against the copy from before), and at the next start no box shows, the module is still disabled and the log still lists both mods as dismissed;
+    - after removing `Valhalla Combat` from the list by hand, the next start shows a box that names only `Valhalla Combat`;
+    - with a read-only INI, "Don't show again" logs the failed write, the box closes and the warning shows again at the next start;
+    - a patch file adding an entry is honoured, and its mod can be dismissed like a default one;
+    - Escape and, by hand, the gamepad's cancel button (B) while the warning is open: record whether the box closes, whether either counts as a button (and which) and whether the INI changes (assumption 19);
+    - with Imperious, Morningstar or Mannaz installed (each where available), no warning shows and the log reports no detection ([§7.9](PRD.md#79-compatibility): none is detected at load).
+- **Depends on:** G1, A1 (the disabled state must reach the API), U1 (the message-box adapter), C3c, C10, and PR #45 merged (override and fallback timing in ST-28).
 
 #### V1 Release test pass
 
 - **Goal:** run success criteria 1 to 3 in one documented session: vanilla leveling, Experience, save and load, and a long play session.
 - **Covers:** [§3 success criteria](PRD.md#3-goals-and-success-criteria) 1 to 3.
-- **Verification:** `in-game` checklist in `tests/ingame/V1.md`, with no crashes and with clean `Papyrus.0.log` and plugin logs.
-- **Depends on:** all tasks above.
+- **Verification:** `in-game` checklist in `tests/ingame/V1.md`, with no crashes and with clean `Papyrus.0.log` and plugin logs. It also covers the race overhauls [§7.9](PRD.md#79-compatibility) marks "test", one run each: with Morningstar and with Mannaz, a new character of a race they change gets the module's pool contributions on top of the overhaul's own boosts (ST-10), and the stats and the box behave as without them; with Imperious, the module works without the planned patch. The results go into the checklist for the user to judge; balance and tweaks are not part of V1.
+- **Depends on:** all tasks above, except U2 (dropped for v1, D8).
+
+### Not in this plan
+
+- **The Imperious patch** ([§7.9](PRD.md#79-compatibility), status Patch, "a later patch"): race adjustments (ST-3) for its races, shipped as a stats patch. The PRD names neither its values nor when it ships, and the plan has no patch tasks, so it is out of v1. It needs no code: race adjustments already come from the stats file, keyed by race editor ID (C3).
 
 ### Order and parallelism
 
-- Sequential path: T1.1, then C4 and C1 and C2, then C3, C5, C5a, C6, C7, C8, C7a, G1, G2, G3, G5, U1, A1, A2, A3, K1, V1.
+- Sequential path: T1.1, then C4 and C1 and C2, then C3, C5, C5a, C6, C7, C8, C7a, G1, G2, G3, G5, U1, A1, A2, A3, K1, V1. U2 is dropped for v1 (D8) and is not in the order.
 - Parallel tracks:
   - T1.2 and the spikes S1 to S8 run alongside Phase 2. S8 waits on the Wine Mono user action.
   - T1.3 (sanitizer CI) touches only the presets, the workflow, `CONTRIBUTING.md` and the README, and runs at any time.
   - C1, C2 and C4 run in parallel. C9 runs in parallel with C8 and C7a; C8 and C7a share the service files, so they run one after the other, in either order.
   - The stat box amendments of PR #31: C9a only adds files and runs at any time. C3a runs in parallel with C8, C7a and C9a. C9b follows C3a, C9a and the merge of C8 (`stat_value.h`), and runs in parallel with C7a. C3b (PR #33) runs at any time. C9c follows C9b and C3b. C9d (S2) runs at any time once PR #41 is merged. U1 needs C9c and C9d, A1 needs C9b.
+  - The compatibility warning (PR #43): C3c runs at any time; C10 follows C3c. Both must merge before K1, which also needs U1.
   - G6, G7, G8, G9a to G9c and G10a to G10c run in parallel once their spike and G1 or G3 are done.
 
 ## Risks
@@ -871,6 +982,8 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
 - **Papyrus under Wine (S8):** this is blocked until Wine Mono or .NET is installed in the prefix. If the compiler still fails, A2 is blocked; fallback: revisit D5 (Caprica).
 - **S1 fails:** if the LevelUp menu cannot be suppressed cleanly, ST-19 and success criterion 1 need the revert fallback, or a PRD change. This is the highest-risk spike, so run it first. Resolved: suppression works with Experience ([S1 result](#s1-result)). What is left: 1.6.x, level-up menu mods and the game without Experience are untested (the hook has no 1.7.x-only offset). `setlevel`-style level changes are settled by ST-18: they are not level-ups, and G5 counts only the hook path.
 - **Stat box text (S2, U1):** paging (C9c) counts the model's lines, not the lines the box draws, and a line longer than about 40 characters wraps. S2 showed that the box never cuts off or scrolls but shrinks its font, readable up to about 30 lines, so 15 lines per page leave room for wrapped lines; a page of many long provider lines can still become small. With vertical buttons, 10 fit with 16 lines of text; the ∞ glyph is missing, so C9d shows `--` ([S2 result](#s2-result)). Left open: the game without SkyUI, other resolutions and the gamepad's Y, which the user checks by hand in U1. If those differ, the ways out (a lower default, fewer buttons, short names only) are for the user to decide, since they change what ST-24 shows.
+- **Warning write-back (C10, K1):** the plugin writes its own INI while the game runs. Under a mod manager's virtual file system (Mod Organizer 2) the write can land in another folder than the user's copy (the overwrite folder), or fail; a user editing the INI at the same time can lose an edit or the dismissal. K1 checks the write under the test install's setup and logs the path written; a failure only brings the warning back at the next load (assumption 18). If a message box does not show over the main menu, the warning moves to the first game start or load, as ST-28 allows (K1).
+- **Escape in a message box (U1, K1):** if Escape or the gamepad's cancel button closes a box without calling the callback, or closes the skills menu behind it, the box flow of ST-21 and the warning may need `isCancellable` or `cancelButtonIndex` set; which behaviour is wanted is the user's decision (assumption 19).
 - **Check hooks (S6b):** persuasion and intimidation in vanilla are dialogue conditions on Speech, not a formula. Replacing them may need condition-function hooks, or may not be possible without an ESP, which the "no ESP" constraint rules out.
 - **Magic crit (S5):** vanilla has no spell crits. Adding them may need a damage hook that overlaps with S4 and with combat overhauls.
 - **NPC actor-value persistence:** permanent modifiers on non-persistent NPCs reset when the actor respawns, but the ledger in the co-save does not. G2 and G3 must reconcile this, and OQ-1 may change how much NPC data exists at all.
