@@ -221,7 +221,7 @@ Status levels and domain ownership are defined in the [overview](../PRD.md#5-com
 | Level-up menu mods | Compatible | Change or replace the vanilla level-up menu | The stat box replaces the vanilla level-up menu (ST-19); test which one opens |
 | UI mods (SkyUI) | Compatible | None | The stat box is a native message box (ST-24) |
 
-- ST-28: At load, the module detects the mods in the incompatible file (by default the mods the table above marks as detected at load) through the SKSE plugin list and plugin presence, logs the result, shows a warning and disables itself, unless an INI override allows an unsupported run. The warning names each detected mod and has an "OK" and a "Don't show again" button. "Don't show again" stops the warning for the mods it named, per mod, by adding them to a list of dismissed mods in the INI; removing a mod from that list shows its warning again. A dismissed mod still disables the module, and the log still records it at every load.
+- ST-28: At load, the module detects the mods in the incompatible file (by default the mods the table above marks as detected at load) through the SKSE plugin list and plugin presence, logs the result, shows a warning and disables itself, unless an INI override allows an unsupported run. The warning names each detected mod and has an "OK" and a "Don't show again" button. "Don't show again" stops the warning for the mods it named, per mod, by adding them to a list of dismissed mods in the INI; removing a mod from that list shows its warning again. A dismissed mod still disables the module, and the log still records it at every load. With the INI override set, the module runs and shows no warning; the log still records the detected mods. If the box cannot show at the main menu, it shows when the player first starts or loads a game.
 
 ## 8. Constraints
 
@@ -245,6 +245,5 @@ Status levels and domain ownership are defined in the [overview](../PRD.md#5-com
 - Check weights and curves per action (DEX and Lockpicking, CHA and Speech, ...): to be found by testing approaches during implementation.
 - END redirection: share of damage as a function of END.
 - Direct activity XP (ST-15): the amounts per DEX hit, spell, damage taken, disease and poison (they must stay small); the XP for persuading and intimidating by target. Direct XP and skill level-up XP stack.
-- Behaviour on detecting an incompatible mod: warn only, or disable (ST-28 currently disables).
 - STR XP for unarmed attacks by glove weight (ST-15): the curve and its amounts.
 - PER XP for fighting (ST-15): what counts as fighting and how much XP it gives.
