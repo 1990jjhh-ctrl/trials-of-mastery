@@ -274,7 +274,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - `Requiem, Valhalla Combat` gives both names; ` Requiem ,,Valhalla Combat, ` gives the same two; `Requiem, Requiem` gives one; a name with inner spaces (`Skyrim Attributes Mod.`) is kept whole;
   - `formatNameList` of the two names gives `Requiem, Valhalla Combat`, and `parseNameList(formatNameList(x)) == x` for a list of valid entry names;
   - an incompatible patch with an entry named `A, B`, ` Requiem`, `Requiem ` or with a newline is skipped as a whole with an `InvalidEntry` diagnostic (C2), and the shipped default validates against the changed schema;
-  - `scripts/test.sh`, the format check and lint pass.
+  - `scripts/test.sh`, the format check, lint and the sanitizer run pass ([CONTRIBUTING.md#workflow](../../CONTRIBUTING.md#workflow)).
 - **Depends on:** C3 (and C3b, merged, which last changed `settings.h`). **Parallel** with every open task: no other open task changes these files.
 
 #### C4 Stat values, cost and progression
@@ -644,7 +644,7 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - `withDismissed` of `A` and `B, A` is `A, B`; of an empty list and `A` is `A`;
   - `setIniValue` replaces only the value in `DismissedWarnings = Requiem` and leaves the comments, the other keys and sections and the line endings byte for byte; it matches `[compatibility]` and `dismissedwarnings`; it adds the key to a `[Compatibility]` section without it, after `AllowIncompatibleMods`; it appends the section to a text without it, and to an empty text; it keeps CRLF in a CRLF file; a key of the same name in another section is left alone;
   - for each of these, `loadSettings` (C3) of the result reads the new list and every other setting unchanged, with no errors;
-  - `scripts/test.sh`, the format check and lint pass.
+  - `scripts/test.sh`, the format check, lint and the sanitizer run pass ([CONTRIBUTING.md#workflow](../../CONTRIBUTING.md#workflow)).
 - **Depends on:** C3c (`parseNameList`, `formatNameList`, and the name rule). **Parallel** with every other task: it only adds files and their CMake lines.
 
 
@@ -978,7 +978,7 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
   - The setup action's vcpkg cache key ends in the run ID, so two jobs of one run running in parallel race for the same key and the one that finishes first wins the save. With `needs: checks`, `checks` saves and `sanitizers` hits the key and skips its save (CI run 45917852333). Catch2 comes from that cache for the same `x64-linux` triplet and is not instrumented, which ASan and UBSan allow; errors inside Catch2 itself are not caught.
   - `catch_discover_tests` runs the instrumented test binary at build time; a sanitizer error during static initialization fails the build step instead of a test.
   - The sanitizers find only errors the tests execute. The PR #37 pattern shows only under a compiler without P2718R0 (GCC 13 in CI), so a local run with GCC 15 can pass where CI fails.
-  - Open, for the user: whether the local checks of [CONTRIBUTING.md#workflow](../../CONTRIBUTING.md#workflow) step 3 should include the sanitizer run. T1.3 leaves step 3 as it is and adds the command to the README only.
+  - Settled (user decision, 2026-11-27, #50): the sanitizer run is one of the local checks, for the changes that [CONTRIBUTING.md#workflow](../../CONTRIBUTING.md#workflow) step 3 names.
 - **Cross build:** CommonLibSSE-NG and the vcpkg ports must build with clang-cl and lld-link against xwin. Port build scripts that assume MSVC can fail. T1.1 showed that the CommonLibSSE-NG custom ports cover this (the directxtk shaders need Wine and llvm-mingw); for a new failing dependency the fallback is to vendor it as a submodule.
 - **Papyrus under Wine (S8):** this is blocked until Wine Mono or .NET is installed in the prefix. If the compiler still fails, A2 is blocked; fallback: revisit D5 (Caprica).
 - **S1 fails:** if the LevelUp menu cannot be suppressed cleanly, ST-19 and success criterion 1 need the revert fallback, or a PRD change. This is the highest-risk spike, so run it first. Resolved: suppression works with Experience ([S1 result](#s1-result)). What is left: 1.6.x, level-up menu mods and the game without Experience are untested (the hook has no 1.7.x-only offset). `setlevel`-style level changes are settled by ST-18: they are not level-ups, and G5 counts only the hook path.
