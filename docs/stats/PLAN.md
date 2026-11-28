@@ -13,7 +13,7 @@ Build the Stats module as an SKSE plugin for Skyrim AE. The formula and configur
 ## Conventions used in this plan
 
 - **OQ-n** is the n-th bullet in [PRD §10 Open questions](PRD.md#10-open-questions): OQ-1 NPC values, OQ-2 default effect coefficients, OQ-3 skill XP split, OQ-4 learning-speed curve, OQ-5 check weights, OQ-6 END redirection share, OQ-7 direct activity XP amounts, OQ-8 warn or disable on an incompatible mod (closed, see below), OQ-9 STR XP for unarmed attacks by glove weight, OQ-10 PER XP for fighting. **OQ-8 is closed** (user decision, 2026-11-27, PR #45): a detected incompatible mod disables the module (ST-28), and the bullet left the PRD. The IDs keep their numbers, so the `TODO(OQ-9)` and `TODO(OQ-10)` markers in the data stay valid; from OQ-9 on, OQ-n is the (n − 1)-th bullet of the PRD list. A task that depends on an OQ ships a **placeholder default** in a config file and marks it `TODO(OQ-n)` there and in the log at load. The plan does not answer any OQ.
-- **Verification types:** `unit` means a ctest test that runs on the dev host without the game. `log` means a check of the plugin log (`Documents/My Games/Skyrim Special Edition/SKSE/<plugin>.log`). `in-game` means a manual step list that the task adds to `modules/stats/tests/ingame/<task-id>.md`. In-game checks use the console command `cgf "<Script>.<Function>" ...` against the Papyrus API once A2 exists. Before A2 they use log dumps. Every check that starts the game, `in-game` or a `log` check of a game run, including the spike runs, runs from the main session only ([CLAUDE.md#workflow](../../CLAUDE.md#workflow)). An implementer writes the step list and reports the check as not run; the main session runs it and records the result.
+- **Verification types:** `unit` means a ctest test that runs on the dev host without the game. `log` means a check of the plugin log (`Documents/My Games/Skyrim Special Edition/SKSE/<plugin>.log`). `in-game` means a manual step list that the task adds to `modules/stats/tests/ingame/<task-id>.md`. In-game checks call the Papyrus API from the console once A2 exists, through the console route A2 sets up (`cgf` is not in Skyrim SE, [S8 result](#s8-result)). Before A2 they use log dumps. Every check that starts the game, `in-game` or a `log` check of a game run, including the spike runs, runs from the main session only ([CLAUDE.md#workflow](../../CLAUDE.md#workflow)). An implementer writes the step list and reports the check as not run; the main session runs it and records the result.
 - **Parallel** means the tasks share no files except one-line additions to a CMake source list.
 - Code style: the user's `write-code` skill applies to all C++ and Papyrus, unless the project states a deviation.
 
@@ -69,6 +69,7 @@ These are the user's answers to the decisions in the first draft of this plan.
     - [S5](#s5-result): the physical crit hooks ran on worker threads (428 to 440); the spell hook on workers and, for a fire hazard, on the `kPostLoad` thread (388), which also ran the effect ticks.
     - [S6a](#s6a-result): `PlayerCharacter::Update` and `HandleHealthDamage` ran on the thread that received `kPostLoad` (376), as the effect ticks did in S4 and S5; the SKSE messages `kPostLoad`, `kInputLoaded`, `kPreLoadGame` and `kPostLoadGame` arrive there too (all runs), and so did a task queued with `AddTask` in the S7 run. So that thread is the game's main loop; `kDataLoaded` arrives on another one (576 or 584), which the prototypes' logs call "main" by mistake. Animation events, hits, topic info and the resistance check ran on workers (428 to 440).
     - [S6b](#s6b-result): detection and the dialogue conditions ran on worker threads (428 to 440).
+    - [S8](#s8-result): the natives were registered on thread 548 at VM init; called with `DispatchStaticCall` from `kPostLoadGame` on the main loop's thread (376), they ran on 436.
 16. **N and claims are session state (user decision, 2026-11-26):** as [§8](PRD.md#8-constraints) has it, a save stores `r` but neither N nor the claims of advancing (ST-6) and point assignment (ST-22). N comes from the INI each session, so a changed N applies to existing saves, and a claiming module (the mastery module) sets it again through the API. The claiming module also claims again each session. So C8 stores neither, and a revert keeps both, like crit shifts and XP modifiers.
 17. **Stat box display (from PRs #31 and #33, C3a, C3b, C9a, C9b, C9c):** ST-21 and ST-24 leave these details open. The ones marked *user decision* are the user's answers of 2026-11-26; the others are plan choices:
     - *User decision:* "as in the stats file" means the order in which the stats files of the merge (default, patches, mod patches, in merge order, each in its text order) first name a stat, with each stat's group taken from the merged table. A group set only by an API-registered entry is not a stats-file group. The shipped default is reordered so its groups come out as [§7.8](PRD.md#78-configuration) lists them: Warrior, Mage, Thief, Other.
@@ -669,7 +670,7 @@ Each spike is a throwaway prototype in the plugin with a time box. Its result is
 | S6a | Hook points for every default training action of ST-15. | G9a to G9c |
 | S6b | Hook points for the default checks of ST-15. Persuasion and intimidation are dialogue conditions in vanilla. | G10a to G10c |
 | S7 | How does the module learn about Custom Skills Framework skill level-ups (ST-16)? Do skill level-up events still fire above 100 with Beyond Mastery and Experience? Where does CSF compute the XP of a skill use (its `Skill::Advance` and its own Mod Skill Use perk entry call), and where can it be multiplied after that call, for uses only, as the [S3 result](#s3-result) does for vanilla skills (ST-12)? | G4, G6 |
-| S8 | Papyrus build with the Creation Kit compiler under Wine (D5). This starts from the current error "Wine Mono is not installed": installing Wine Mono or .NET in the Wine prefix is a **user action**. Then compile a stub script with a native function from a CMake custom command, with the Skyrim path as a cache variable, and bind it from the plugin. | A2 |
+| S8 | Papyrus build with the Creation Kit compiler under Wine (D5). This starts from the current error "Wine Mono is not installed": installing Wine Mono or .NET in the Wine prefix is a **user action** (done, [S8 result](#s8-result)). Then compile a stub script with a native function from a CMake custom command, with the Skyrim path as a cache variable, and bind it from the plugin. | A2 |
 
 #### S1 result
 
@@ -1014,6 +1015,34 @@ Not covered:
 - **CSF versions other than 3.2.0** and **1.6.x**.
 - **A real vanilla skill use:** the bridge cannot cast or attack (as in the S3 result).
 
+#### S8 result
+
+Run on 2026-11-28: the build on the dev host, the game on 1.7.104 with Experience, CSF 3.2.0, Beyond Mastery, SkyUI and skyrim-acrobatics-ng, through the skyrim-mcp bridge in `qasmoke`; no crash log. **The Creation Kit compiler runs under Wine 10.0 with Wine Mono 11.3.0 from a CMake custom command, and the plugin binds and calls native functions of the compiled script.** The prototype is on the branch `stats/s8-papyrus-wine-spike` (a2aa572): `cmake/papyrus.cmake`, `cmake/papyrus_compile.cmake`, the `TOM_BUILD_PAPYRUS` option in the top-level `CMakeLists.txt`, a few README lines, `modules/stats/papyrus/TrialsOfMasteryStatsSpike.psc` and `.yaml`, and `modules/stats/plugin/src/PapyrusSpike.cpp` and `.h`. That branch stays unmerged, as the reference for A2.
+
+The build:
+
+- `option(TOM_BUILD_PAPYRUS ... OFF)` includes `cmake/papyrus.cmake`, with the cache variables `TOM_SKYRIM_DIR` (the Skyrim install with the Creation Kit), `TOM_WINE` (found with `find_program`) and `TOM_WINEPREFIX` (empty: Wine's default prefix). It fails at configure time, with the reason, without Wine, without the compiler (`<Skyrim>/Papyrus Compiler/PapyrusCompiler.exe`) or without `TESV_Papyrus_Flags.flg` in `<Skyrim>/Data/Source/Scripts` (D5).
+- `tom_add_papyrus_scripts(<target> OUTPUT_DIR <dir> SOURCES <file.psc>...)` adds a target in `ALL` with one custom command per script. Imports are the sources' own folders, then the vanilla sources; paths go to the compiler on Wine's `Z:` drive. The Stats module adds `tom_stats_papyrus`, writing to `build/<preset>/modules/stats/Scripts/`.
+- `cmake/papyrus_compile.cmake` runs the compiler for one script with `cmake -P`. The compiler exits with 0 even when compilation fails, so the wrapper removes the old `.pex` first and fails when no new one exists, printing Wine's output only then.
+- Natives: the plugin registers them through the SKSE Papyrus interface, which calls it at VM init, with `IVirtualMachine::RegisterFunction` and its default `a_callableFromTasklets` false. It then calls them from `kPostLoadGame` with `DispatchStaticCall` and a callback that logs the result.
+
+Evidence (build output, plugin log):
+
+| Check | Result |
+| --- | --- |
+| Wine and Wine Mono | Wine 10.0 with Wine Mono 11.3.0 in `~/.wine` (the user action of the S8 row, done). A fresh prefix needs `wine msiexec /i wine-mono-11.3.0-x86.msi` (about 1.2 GB). |
+| Compile | About 7 to 13 s per script on a cold Wine. A rebuild with nothing changed does nothing; touching the source rebuilds it; a syntax error fails the build with the compiler's message. |
+| CI | Not possible without the Creation Kit's files; with the option OFF, CI is unchanged and green. |
+| The `.pex` | Not byte-identical between two builds. Its header holds the Linux user name and host name and the compile time. |
+| Natives in game | Registered at VM init (thread 548, before `kDataLoaded`). At `kPostLoadGame` (thread 376): "SpikeAnswer called, returns 42", "returned 42 to the plugin", "SpikeLog called", all on thread 436. |
+| Console | A ConsoleUtil SSE NG custom command file (`TrialsOfMasteryStatsSpike.yaml`, `tomspike answer`) installed in `Data/SKSE/CustomConsole` gave "Script command not found" through the bridge, as CSF's own `csf` command did; the bridge's console does not run custom commands, so it is untested, not failed. |
+
+Not covered:
+
+- **A Papyrus script calling the natives** (only the plugin's `DispatchStaticCall`), and Papyrus events.
+- **ConsoleUtil's custom commands in the real console:** a manual check for the user. The plan's `cgf` console command is not in Skyrim SE, so A2 needs another console route; this is one option.
+- **A clean `.pex` for release:** the header's user name, host name and time stay in every build (privacy).
+
 ### Phase 4: Game layer (`modules/stats/plugin/`)
 
 #### G1 Configuration loading in game
@@ -1254,15 +1283,21 @@ Three tasks, all after C7a, each **parallel**. Each hook calls `StatsService::ch
 
 - **Goal:** a compiled Papyrus script with native functions and Papyrus events.
 - **Covers:** ST-26, assumption 5.
-- **Scope:** `modules/stats/papyrus/` (the script source, with the `.pex` as a build output from the S8 custom command) and the native bindings in the plugin.
+- **Scope:** `modules/stats/papyrus/` (the script source, with the `.pex` as a build output) and the native bindings in the plugin. The build comes from the [S8 result](#s8-result) (branch `stats/s8-papyrus-wine-spike`, not merged) and is part of A2: `cmake/papyrus.cmake` and `cmake/papyrus_compile.cmake` with `tom_add_papyrus_scripts`, the `TOM_BUILD_PAPYRUS` option (OFF by default, so CI, which has no Creation Kit, stays as it is), the cache variables `TOM_SKYRIM_DIR`, `TOM_WINE` and `TOM_WINEPREFIX`, the target `tom_stats_papyrus`, and the README lines for it ([README.md#build-and-test](../../README.md#build-and-test)), including the Wine Mono install of a fresh prefix.
 - **Interfaces:**
   - Global native functions that mirror A1, with stats addressed by name, except the crit shift registration, which is C++ only (ST-26).
   - The section of a namespace's group (ST-24, ST-26) is filled with lines: natives set and clear the lines of the caller's namespace, under A1's ownership rule. A2 keeps the lines and registers, per namespace, a `SectionProvider` (C9b) that returns them, so the box reads them when it opens (assumption 17).
   - Ascend takes a curve name and parameters and passes them on to the C++ ascend.
   - Events are delivered as SKSE mod events with documented names and arguments.
-  - Natives that call the service follow G1's thread rule (assumption 15). `RE::BSScript::IVirtualMachine::RegisterFunction` takes `a_callableFromTasklets`, `false` by default, which makes a native wait for the next frame instead of running at once on a script thread; A2 keeps that default for them unless the rule allows otherwise.
-- **Verification:** `in-game`. `cgf` calls read and change values, a test script receives each event, lines set by `cgf` for the namespace of a registered test stat show in its section the next time the box opens and clearing them brings the stat lines back, and `Papyrus.0.log` shows no stack dumps.
-- **Depends on:** S8, A1.
+  - Natives are registered through the SKSE Papyrus interface at VM init, as in the S8 prototype.
+  - Natives that call the service follow G1's thread rule (assumption 15). `RE::BSScript::IVirtualMachine::RegisterFunction` takes `a_callableFromTasklets`, `false` by default, which makes a native wait for the next frame instead of running at once on a script thread; A2 keeps that default for them unless the rule allows otherwise. With that default, the S8 natives still ran on thread 436, not on the main loop's thread (376), so the default alone does not put them on the main thread.
+  - The console route for the in-game checks: `cgf` is not in Skyrim SE. One option is a ConsoleUtil SSE NG custom command file (`Data/SKSE/CustomConsole/<name>.yaml`, as the S8 prototype's `TrialsOfMasteryStatsSpike.yaml`), which calls the script's global functions; it was untested in S8, since the bridge's console does not run custom commands. A2 picks the route after the user's manual check below; it is an option here, not a decision.
+  - A2 does not ship the `.pex` with the build machine's user and host name in its header; a release step blanks them, planned separately.
+- **Verification:**
+  - Build: with `TOM_BUILD_PAPYRUS=ON` and `TOM_SKYRIM_DIR` set, `cmake --build --preset plugin` compiles the script; a second build does nothing; a syntax error fails the build; with the option OFF (CI), nothing about Papyrus runs.
+  - `in-game`: console calls through the chosen route read and change values, a test script receives each event, lines set from the console for the namespace of a registered test stat show in its section the next time the box opens and clearing them brings the stat lines back, and `Papyrus.0.log` shows no stack dumps.
+  - Manual check, run by the user by hand before A2 picks the console route: with ConsoleUtil SSE NG and the S8 prototype's `TrialsOfMasteryStatsSpike.yaml` installed, `tomspike answer` in the game's console logs "SpikeAnswer called, returns 42".
+- **Depends on:** A1. S8 is done ([S8 result](#s8-result)).
 
 #### A3 API consumer test plugin
 
@@ -1336,7 +1371,7 @@ Three tasks, all after C7a, each **parallel**. Each hook calls `StatsService::ch
   - The sanitizers find only errors the tests execute. The PR #37 pattern shows only under a compiler without P2718R0 (GCC 13 in CI), so a local run with GCC 15 can pass where CI fails.
   - Settled (user decision, 2026-11-27, #50): the sanitizer run is one of the local checks, for the changes that [CONTRIBUTING.md#workflow](../../CONTRIBUTING.md#workflow) step 3 names.
 - **Cross build:** CommonLibSSE-NG and the vcpkg ports must build with clang-cl and lld-link against xwin. Port build scripts that assume MSVC can fail. T1.1 showed that the CommonLibSSE-NG custom ports cover this (the directxtk shaders need Wine and llvm-mingw); for a new failing dependency the fallback is to vendor it as a submodule.
-- **Papyrus under Wine (S8):** this is blocked until Wine Mono or .NET is installed in the prefix. If the compiler still fails, A2 is blocked; fallback: revisit D5 (Caprica).
+- **Papyrus under Wine (S8):** resolved: the compiler runs under Wine 10.0 with Wine Mono 11.3.0 ([S8 result](#s8-result)). What is left: CI cannot compile Papyrus without the Creation Kit's files, so the scripts are built and checked only locally, and a fresh Wine prefix needs Wine Mono installed by hand. The `.pex` header carries the build machine's user and host name, which a release step must blank (planned separately).
 - **S1 fails:** if the LevelUp menu cannot be suppressed cleanly, ST-19 and success criterion 1 need the revert fallback, or a PRD change. This is the highest-risk spike, so run it first. Resolved: suppression works with Experience ([S1 result](#s1-result)). What is left: 1.6.x, level-up menu mods and the game without Experience are untested (the hook has no 1.7.x-only offset). `setlevel`-style level changes are settled by ST-18: they are not level-ups, and G5 counts only the hook path.
 - **Stat box text (S2, U1):** paging (C9c) counts the model's lines, not the lines the box draws, and a line longer than about 40 characters wraps. S2 showed that the box never cuts off or scrolls but shrinks its font, readable up to about 30 lines, so 15 lines per page leave room for wrapped lines; a page of many long provider lines can still become small. With vertical buttons, 10 fit with 16 lines of text; the ∞ glyph is missing, so C9d shows `--` ([S2 result](#s2-result)). Left open: the game without SkyUI, other resolutions and the gamepad's Y, which the user checks by hand in U1. If those differ, the ways out (a lower default, fewer buttons, short names only) are for the user to decide, since they change what ST-24 shows.
 - **Warning write-back (C10, K1):** the plugin writes its own INI while the game runs. Under a mod manager's virtual file system (Mod Organizer 2) the write can land in another folder than the user's copy (the overwrite folder), or fail; a user editing the INI at the same time can lose an edit or the dismissal. K1 checks the write under the test install's setup and logs the path written; a failure only brings the warning back at the next load (assumption 18). If a message box does not show over the main menu, the warning moves to the first game start or load, as ST-28 allows (K1).
