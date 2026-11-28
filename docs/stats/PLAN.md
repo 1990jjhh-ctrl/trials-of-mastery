@@ -12,7 +12,7 @@ Build the Stats module as an SKSE plugin for Skyrim AE. The formula and configur
 
 ## Conventions used in this plan
 
-- **OQ-n** is the n-th bullet in [PRD §10 Open questions](PRD.md#10-open-questions): OQ-1 NPC values, OQ-2 default effect coefficients, OQ-3 skill XP split, OQ-4 learning-speed curve, OQ-5 check weights, OQ-6 END redirection share, OQ-7 direct activity XP amounts, OQ-8 warn or disable on an incompatible mod (closed, see below), OQ-9 STR XP for unarmed attacks by glove weight, OQ-10 PER XP for fighting. **OQ-8 is closed** (user decision, 2026-11-27, PR #45): a detected incompatible mod disables the module (ST-28), and the bullet left the PRD. The IDs keep their numbers, so the `TODO(OQ-9)` and `TODO(OQ-10)` markers in the data stay valid; from OQ-9 on, OQ-n is the (n − 1)-th bullet of the PRD list. A task that depends on an OQ ships a **placeholder default** in a config file and marks it `TODO(OQ-n)` there and in the log at load. The plan does not answer any OQ.
+- **OQ-n** is the n-th bullet in [PRD §10 Open questions](PRD.md#10-open-questions): OQ-1 NPC values, OQ-2 default effect coefficients, OQ-3 skill XP split, OQ-4 learning-speed curve, OQ-5 check weights, OQ-6 END redirection share, OQ-7 direct activity XP amounts, OQ-8 warn or disable on an incompatible mod (closed, see below), OQ-9 STR XP for unarmed attacks by glove weight, OQ-10 PER XP for fighting, OQ-11 END's resistance to poison, fall damage mitigation and breath duration (their default curves), OQ-12 sneak reveal (the cue, the range curve from PER, line of sight); OQ-11 and OQ-12 come with PR #55, which also adds the default spell crit multiplier (ST-13) to OQ-2. **OQ-8 is closed** (user decision, 2026-11-27, PR #45): a detected incompatible mod disables the module (ST-28), and the bullet left the PRD. The IDs keep their numbers, so the `TODO(OQ-9)` and `TODO(OQ-10)` markers in the data stay valid; from OQ-9 on, OQ-n is the (n − 1)-th bullet of the PRD list. A task that depends on an OQ ships a **placeholder default** in a config file and marks it `TODO(OQ-n)` there and in the log at load. The plan does not answer any OQ.
 - **Verification types:** `unit` means a ctest test that runs on the dev host without the game. `log` means a check of the plugin log (`Documents/My Games/Skyrim Special Edition/SKSE/<plugin>.log`). `in-game` means a manual step list that the task adds to `modules/stats/tests/ingame/<task-id>.md`. In-game checks call the Papyrus API from the console once A2 exists, through the console route A2 sets up (`cgf` is not in Skyrim SE, [S8 result](#s8-result)). Before A2 they use log dumps. Every check that starts the game, `in-game` or a `log` check of a game run, including the spike runs, runs from the main session only ([CLAUDE.md#workflow](../../CLAUDE.md#workflow)). An implementer writes the step list and reports the check as not run; the main session runs it and records the result.
 - **Parallel** means the tasks share no files except one-line additions to a CMake source list.
 - Code style: the user's `write-code` skill applies to all C++ and Papyrus, unless the project states a deviation.
@@ -31,6 +31,7 @@ These are the user's answers to the decisions in the first draft of this plan.
 | D6 | Assumptions confirmed or moved into the PRDs; see below |
 | D7 | The stat box opens with key K and gamepad button Y by default (user decision, 2026-11-24). ST-24 asks for a key and a button in the INI but names neither |
 | D8 | U2, the skills-menu hint of ST-25 (Could), is dropped for v1 (user decision, 2026-11-27), since the HUD route of S2 does not work ([S2 result](#s2-result)) |
+| D9 | A hook whose site is not found, or that cannot be installed, is only logged: its feature is off for that session, with no message box. User decision of 2026-11-27 for G6 (the learning bonus), extended on 2026-11-28 to G7, G7a, G7b, G8, G9 and G10 |
 
 ## Assumptions and open questions
 
@@ -360,6 +361,25 @@ All Phase 2 tasks are checked by `unit` tests in `tom_stats_core_tests`. Expecte
   - `scripts/test.sh`, the format check and lint pass ([CONTRIBUTING.md#workflow](../../CONTRIBUTING.md#workflow)).
 - **Depends on:** C4, C5. **Must merge before C7.**
 
+#### C5b END's small effects and the sneak reveal in the core (C5 amendment, PR #55)
+
+- **Goal:** add the named effects, the default effect entries and the spell crit multiplier that PR #55 brings into ST-11, ST-13 and ST-13a, so the game tasks G7a, G7b, G8 and G11 can read their values from the service.
+- **Covers:** ST-9, ST-10 (END's resistance to poison), ST-11 (fall damage mitigation, breath duration), ST-13 (spell crit multiplier), ST-13a (sneak reveal range).
+- **Scope:**
+  - `modules/stats/core/include/tom/stats/core/config/tables.h` and `core/src/config/tables.cpp`: three new `NamedEffect` values and their names;
+  - `modules/stats/core/include/tom/stats/core/effects.h` and `core/src/effects.cpp`: one value function each, as `damageRedirectionShare` has;
+  - `modules/stats/core/include/tom/stats/core/stats_service.h` and `core/src/stats_service.cpp`: one accessor each;
+  - `modules/stats/data/schema/stats.schema.json`: the three names in the `named` enum;
+  - `modules/stats/data/stats/_default.json`: END gets an actor-value effect on `PoisonResist` next to CON's (the values add up, ST-9) and the two named effects; PER gets the sneak reveal; the spell crit multiplier is added in the form ST-13 gives it, with a placeholder marked `TODO(OQ-2)`;
+  - the unit tests of the tables, effects and service.
+- **Interfaces:**
+  - `NamedEffect::FallDamageMitigation`, `NamedEffect::BreathDuration`, `NamedEffect::SneakReveal`, named `FallDamageMitigation`, `BreathDuration` and `SneakReveal` in the stats file.
+  - `fallDamageMitigation(actor, stats)`, `breathDuration(actor, stats)` and `sneakRevealRange(actor, stats)` in `effects.h`, each the summed `namedEffectValue` (C5).
+  - `StatsService::fallDamageMitigation(ActorId)`, `breathDuration(ActorId)` and `sneakRevealRange(ActorId)`, each `std::expected<double, Error>` like `damageRedirectionShare`, and a read of the spell crit multiplier for G8.
+  - The default entries are relative, the PRD's default for named effects (ST-9), with placeholder curves marked `TODO(OQ-11)` (END) and `TODO(OQ-12)` (PER). What each value means in the game (a share of the fall damage taken off, a breath factor or seconds, a range in game units) is part of those questions: C5b does not pick it silently, each placeholder's `TODO` names the unit it assumes, and G7a, G7b and G11 raise it with the user before they start.
+- **Verification:** `unit`: the three names parse and an unknown name is still rejected; the schema accepts them; the default tables load with the new entries and log their `TODO(OQ-11)` and `TODO(OQ-12)` markers; each accessor returns the curve value for an actor and fails for an unknown one; END's and CON's `PoisonResist` contributions add up in the ledger.
+- **Depends on:** C5, C7. It shares the service files with C7a and C8, so it runs after them. Placeholder values depend on OQ-2, OQ-11 and OQ-12.
+
 #### C6 Training, checks and XP modifiers
 
 - **Goal:** compute the stat XP from skill level-ups and actions, and check values.
@@ -671,6 +691,8 @@ Each spike is a throwaway prototype in the plugin with a time box. Its result is
 | S6b | Hook points for the default checks of ST-15. Persuasion and intimidation are dialogue conditions in vanilla. | G10a to G10c |
 | S7 | How does the module learn about Custom Skills Framework skill level-ups (ST-16)? Do skill level-up events still fire above 100 with Beyond Mastery and Experience? Where does CSF compute the XP of a skill use (its `Skill::Advance` and its own Mod Skill Use perk entry call), and where can it be multiplied after that call, for uses only, as the [S3 result](#s3-result) does for vanilla skills (ST-12)? | G4, G6 |
 | S8 | Papyrus build with the Creation Kit compiler under Wine (D5). This starts from the current error "Wine Mono is not installed": installing Wine Mono or .NET in the Wine prefix is a **user action** (done, [S8 result](#s8-result)). Then compile a stub script with a native function from a CMake custom command, with the Skyrim path as a cache variable, and bind it from the plugin. | A2 |
+| S9 | Sneak reveal (ST-13a, PR #55): how can a sneaking NPC within a range of the player get a visual cue without an ESP? Candidates: an effect shader on the NPC (a vanilla shader form, or one made at runtime), a HUD or compass marker. How does the plugin find sneaking NPCs near the player (the process lists, `Actor::IsSneaking`), how often, on which thread and at what cost; how is a line-of-sight test done, should OQ-12 ask for one; and how is the cue removed when the NPC stops sneaking, leaves the range or the cell unloads? The result lists the options with screenshots for the user, who picks the cue (OQ-12). | G11 |
+| S10 | END's small effects (ST-11, PR #55): fall damage mitigation, breath duration and resistance to poison. Fall damage reaches `DoDamage` from 37998+0xC7 with no attacker ([S4 result](#s4-result)): where is its amount computed, is 37998 the only path (player and NPCs), and can the damage be scaled at that call, before the difficulty multiplier? Does skyrim-acrobatics-ng, which is in the test install, change fall damage, and where? Breath: where does the game count the time under water before drowning (37348 deals the damage), which values set it, and can it be lengthened or shortened per actor? Resistance to poison is an actor-value effect on `PoisonResist` (ST-10): confirm that a permanent modifier on it lowers a poison's magnitude through `CheckResistance` ([S6a result](#s6a-result)) and how the game caps it, so that no hook is needed. | G7a, G7b, C5b |
 
 #### S1 result
 
@@ -1138,7 +1160,7 @@ Not covered:
 #### G7 END damage redirection
 
 - **Goal:** redirect the END share of incoming damage into Stamina or Magicka per the C5 split.
-- **Covers:** ST-11 (damage redirection only; END's other effects of ST-11 are not part of G7).
+- **Covers:** ST-11 (damage redirection only; END's other effects of ST-11 are C5b, G7a and G7b).
 - **Interfaces:** the hooks of the [S4 result](#s4-result), with the user decisions of PR #55 (ST-11):
   - Replaces the call of 38468 at 37335+0x151 (`DoDamage`'s Health change, after the difficulty multiplier) and splits there, so the share is taken from what the actor would take. Every call is split on its own, so damage over time is split per tick.
   - Tells the kind apart as the prototype does: a thread-local mark set around the call of 37335 at 38586+0x4A7 (physical, with the `HitData`) and at 35086+0x232 (magic, with the effect), cleared after the call. A `DoDamage` call without a mark (fall damage 37998+0xC7, drowning 37348, any other caller) is not redirected (ST-11: damage with no type).
@@ -1156,6 +1178,22 @@ Not covered:
   - manual checks, run by the user by hand, since the bridge could not bring them about in S4: a frostbite spider's bite, a weapon poison applied by an NPC and a poison trap are not redirected; drowning is not redirected; a split hit that kills the player kills as usual; an arrow hit is split as physical.
 - **Depends on:** G3, G1. S4 is done ([S4 result](#s4-result)). The share depends on OQ-6.
 
+#### G7a END fall damage mitigation
+
+- **Goal:** lower the fall damage an actor takes by its fall damage mitigation (C5b).
+- **Covers:** ST-11 (fall damage mitigation).
+- **Interfaces:** the hook S10 finds. The candidate from the [S4 result](#s4-result) is the call of `DoDamage` at 37998+0xC7, where fall damage arrives with no attacker: the replacement scales the damage by the actor's `fallDamageMitigation` (C5b) and calls the original target. Fall damage is not redirected (ST-11, G7), so G7 leaves it alone; G7a changes only its amount. It finds its site by a scan, logs it and stays off for the session if the site is not found ([D9](#decisions-taken)), and follows G1's thread rule for values needed at once (assumption 15; S4 saw fall damage on a worker thread).
+- **Verification:** `in-game` plus `log`: a fall from `setpos z` +1000 logs the damage before and after the mitigation, and Health drops by the mitigated amount (S4: 118.967 unmitigated at Adept); with END at its default base the damage is unchanged; with skyrim-acrobatics-ng loaded, the result S10 records holds. Manual check, run by the user by hand: a real jump from a height.
+- **Depends on:** S10, C5b, G1. The curve and the value's unit depend on OQ-11.
+
+#### G7b END breath duration
+
+- **Goal:** change how long an actor can hold its breath before drowning by its breath duration (C5b).
+- **Covers:** ST-11 (breath duration).
+- **Interfaces:** the hook or value S10 finds for the time under water; drowning damage (37348) is not redirected (G7). It reads `breathDuration` (C5b), finds its site the way S10 describes, logs it and stays off for the session if it is not found ([D9](#decisions-taken)), and follows G1's thread rule (assumption 15).
+- **Verification:** `in-game` plus `log`: under water, the time until the first drowning damage changes with END as the curve says and is the vanilla time at the default base; it resets on surfacing. Manual check, run by the user by hand if the bridge cannot dive: swimming under water until drowning starts, with a low and a high END.
+- **Depends on:** S10, C5b, G1. The curve and the value's unit depend on OQ-11.
+
 #### G8 DEX crit chance
 
 - **Goal:** apply the DEX base crit chance to physical and magic attacks, with the additive shift slot for other modules.
@@ -1164,7 +1202,7 @@ Not covered:
   - The default crit effects are absolute (C5a), so the chance follows the effective stat, not its distance to the default base.
   - Physical crits, from the [S5 result](#s5-result): replaces the call of the target's Mod Enemy Critical Hit Chance (0x11) perk entry at 44016+0x2CB. The replacement calls the perk entry, then adds `critChance(attacker, Physical)` (C7, with the shifts of other modules) to the chance it was passed, so the base crit chance comes after the game's crit perks, which set the chance (ST-13, PR #55). The added chance is scaled by the weapon's crit multiplier as [ST-13](PRD.md#73-effects) defines: G8 multiplies it by the weapon's CRDT % Mult, read the way 26441 reads it (taken as is when not negative), so a weapon with a multiplier of 0 stays without crits. The game's own chance before it (`CriticalChance` × condition × CRDT % Mult, then the perks) stays as it is, and so do the roll and the crit damage. Every hit goes through 44016, melee and projectiles alike.
   - The game rolls the chance in percent at a resolution of 0.1 % (modulo 1000 against chance × 10), and a single hit can run 44016 more than once, each time with its own roll (S5 result). G8 adds to every run, as vanilla's own chance does, and logs each.
-  - Spell crits, from the S5 result: replaces slot 0 (`AdjustForPerks`) of the vtables of `ValueModifierEffect` (206143), `AccumulatingValueModifierEffect` (205803), `PeakValueModifierEffect` (206014) and `DualValueModifierEffect` (205876), calling the previous function. After it, an effect that can crit by [ST-13](PRD.md#73-effects) rolls once against `critChance(caster, Magic)`, and on a crit its magnitude is multiplied by the spell crit multiplier from the stats file (ST-13; its default value is part of OQ-2, and its core part is planned with the other core changes of PR #55).
+  - Spell crits, from the S5 result: replaces slot 0 (`AdjustForPerks`) of the vtables of `ValueModifierEffect` (206143), `AccumulatingValueModifierEffect` (205803), `PeakValueModifierEffect` (206014) and `DualValueModifierEffect` (205876), calling the previous function. After it, an effect that can crit by [ST-13](PRD.md#73-effects) rolls once against `critChance(caster, Magic)`, and on a crit its magnitude is multiplied by the spell crit multiplier from the stats file (ST-13; its default value is part of OQ-2, and its core part is C5b).
   - Which effects roll: ST-13 limits spell crits to Health damage from cast spells and staves. So G8 tells them apart from what the prototype also rolled for (a fire hazard with casting source 3 in S5) and from weapon enchantments, poisons and traps, by the magic item's type (a spell, or the enchantment of a staff in the casting hand) and its casting source (left or right hand, not instant or other). G8 logs every effect it skips with its item type and casting source, and checks the rule in game before relying on it. A damage-over-time effect rolls once and deals the scaled magnitude in every tick; the per-tick fallback at 35086+0x232 is not used.
   - Finds each site by its scan from the S5 result (exactly one match, vanilla target) and logs whose function each vtable slot held. If a site is not found, that part stays off for the session and the log says why, with no message box ([D9](#decisions-taken)).
   - Both hooks need the chance inside the game's computation, on worker threads (428 to 440 in S5) and, for some effects, on the `kPostLoad` thread (388), so they follow G1's thread rule for values needed at once (assumption 15). The crit shifts of other modules run on those threads too, which A1 documents. The hooks log their thread.
@@ -1176,7 +1214,7 @@ Not covered:
   - `in-game` plus `log`, steps from the S5 run: NPC-versus-NPC hits (bandits and hagravens) roll the DEX chance after the perks; a Firebolt cast at the player rolls once per effect, and a crit scales its magnitude by the multiplier; a fire hazard does not roll.
   - `unit` or `log`: a shift returning NaN or infinity does not reach the game and is logged.
   - Manual checks, run by the user by hand, since the bridge could not do them in S5: the player's own hits on an NPC crit at the logged rate; with Bladesman (or another crit perk) added through `player.addperk`, the chance is the perk's value plus the DEX chance; a held concentration spell (Flames) cast by the player rolls once per cast; an Absorb Health spell cast at the player is logged with whether it rolled; a weapon enchantment, a weapon poison and a trap never roll; a weapon whose CRDT % Mult is 0, if the test install has one, never crits.
-- **Depends on:** G1. S5 is done ([S5 result](#s5-result)). The curve and the spell crit multiplier's default depend on OQ-2.
+- **Depends on:** G1, C5b (the spell crit multiplier). S5 is done ([S5 result](#s5-result)). The curve and the spell crit multiplier's default depend on OQ-2.
 
 #### G9 Action training hooks
 
@@ -1215,7 +1253,7 @@ Three tasks, all after C7a, each **parallel**. Each hook calls `StatsService::ch
 - **G10a:** lockpicking and pickpocket.
   - Lockpicking: the three calls in the lock setup 51964: the sweet spot 26488 at +0x90, the partial pick angle 26489 at +0xA8 and the pick break 26490 at +0x1AF. Which of them the check drives (ST-15 names the sweet spot) is part of the result mapping, OQ-5.
   - Pickpocket: the calls of 26379 in the steal attempt (40654+0x12C) and in the item card (51130+0x213), both, so the chance shown is the chance rolled.
-- **G10b:** sneak. The detection check of PER is removed (PR #55): the game never runs its detection check with the player as the detector (S6b), and PER's sneak reveal is a named effect (ST-13a), planned separately.
+- **G10b:** sneak. The detection check of PER is removed (PR #55): the game never runs its detection check with the player as the detector (S6b), and PER's sneak reveal is a named effect (ST-13a, G11).
   - The call of 26365 at 37774+0x5C2 where the player is the target, with the player's Sneak as the input S6b changed (`+200` took the skill term from 2.69 to −37.37 at the same distance).
   - Removes the `Detection` action from `modules/stats/data/actions/_default.json`, with the unit tests that name it.
 - **G10c:** persuasion, intimidation and barter.
@@ -1230,6 +1268,14 @@ Three tasks, all after C7a, each **parallel**. Each hook calls `StatsService::ch
   - G10b, through the bridge as in S6b: near a merchant while sneaking, the logged detection level changes with DEX and Sneak as the check says, and the log shows no call with the player as detector.
   - Manual checks, run by the user by hand, since the bridge cannot target locks, containers or NPCs: lockpicking (sweet spot, partial pick, a broken pick) on locks of two levels; pickpocket chance in the item card and the attempt; barter prices in the menu and the gold of a real sale and purchase; a persuade and an intimidate option in dialogue, each with a stat high enough and too low, and that activating the NPC alone changes nothing visible.
 - **Depends on:** C7a, G1. S6b is done ([S6b result](#s6b-result)). Weights and mappings depend on OQ-5.
+
+#### G11 PER sneak reveal
+
+- **Goal:** give sneaking NPCs within the player's sneak reveal range a visual cue (ST-13a).
+- **Covers:** ST-13a.
+- **Interfaces:** the cue and the detection of sneaking NPCs that S9 finds and the user picks (OQ-12). It reads `sneakRevealRange` (C5b) of the player, adds the cue when a sneaking NPC comes within the range (and in line of sight, if OQ-12 asks for it) and removes it when the NPC stops sneaking, leaves the range or unloads. It needs no value inside a game computation, so it follows G1's thread rule for deferred calls (assumption 15). Without an ESP ([§8](PRD.md#8-constraints)).
+- **Verification:** `in-game` plus `log`: a sneaking NPC (made to sneak the way S9 records) gets the cue inside the range and loses it outside, when it stops sneaking and after a cell change; a non-sneaking NPC never gets it; the range follows PER. Manual check, run by the user by hand: the cue looks as OQ-12 decides, with and without SkyUI.
+- **Depends on:** S9, C5b, G1. The cue, the range curve and line of sight depend on OQ-12.
 
 ### Phase 5: Stat box UI
 
@@ -1292,7 +1338,7 @@ Three tasks, all after C7a, each **parallel**. Each hook calls `StatsService::ch
   - Natives are registered through the SKSE Papyrus interface at VM init, as in the S8 prototype.
   - Natives that call the service follow G1's thread rule (assumption 15). `RE::BSScript::IVirtualMachine::RegisterFunction` takes `a_callableFromTasklets`, `false` by default, which makes a native wait for the next frame instead of running at once on a script thread; A2 keeps that default for them unless the rule allows otherwise. With that default, the S8 natives still ran on thread 436, not on the main loop's thread (376), so the default alone does not put them on the main thread.
   - The console route for the in-game checks: `cgf` is not in Skyrim SE. One option is a ConsoleUtil SSE NG custom command file (`Data/SKSE/CustomConsole/<name>.yaml`, as the S8 prototype's `TrialsOfMasteryStatsSpike.yaml`), which calls the script's global functions; it was untested in S8, since the bridge's console does not run custom commands. A2 picks the route after the user's manual check below; it is an option here, not a decision.
-  - A2 does not ship the `.pex` with the build machine's user and host name in its header; a release step blanks them, planned separately.
+  - A2 does not ship the `.pex` with the build machine's user and host name in its header; R1 blanks them.
 - **Verification:**
   - Build: with `TOM_BUILD_PAPYRUS=ON` and `TOM_SKYRIM_DIR` set, `cmake --build --preset plugin` compiles the script; a second build does nothing; a syntax error fails the build; with the option OFF (CI), nothing about Papyrus runs.
   - `in-game`: console calls through the chosen route read and change values, a test script receives each event, lines set from the console for the namespace of a registered test stat show in its section the next time the box opens and clearing them brings the stat lines back, and `Papyrus.0.log` shows no stack dumps.
@@ -1334,6 +1380,17 @@ Three tasks, all after C7a, each **parallel**. Each hook calls `StatsService::ch
     - with Imperious, Morningstar or Mannaz installed (each where available), no warning shows and the log reports no detection ([§7.9](PRD.md#79-compatibility): none is detected at load).
 - **Depends on:** G1, A1 (the disabled state must reach the API), U1 (the message-box adapter), C3c, C10, and PR #45 merged (override and fallback timing in ST-28).
 
+#### R1 Blank the `.pex` header for release
+
+- **Goal:** the shipped `.pex` files carry neither the build machine's user name nor its host name ([S8 result](#s8-result)).
+- **Covers:** privacy of the package; no PRD requirement. The plan has no packaging task: how the release archive is built is not planned here, only that its `.pex` files are clean.
+- **Scope:** the Papyrus compile wrapper from A2 (`cmake/papyrus_compile.cmake`), or a small step it runs after the compiler.
+- **Interfaces:** after a successful compile, the wrapper rewrites the header fields of the `.pex` that name the build machine: the user name and the computer name (fixed placeholder text), the compile time (a fixed value), and the source file name if it holds a path. The field layout comes from the description of the `.pex` format the implementer cites in the code. Whether the result is then byte-identical between builds is recorded; anything else that differs is listed in the task's pull request.
+- **Verification:**
+  - Build: searching the built `.pex` for the build machine's user name and host name finds neither; two clean builds give the same file, or the remaining differences are listed.
+  - `in-game`: the game loads the rewritten script, its natives answer as in A2's checks, and `Papyrus.0.log` shows no error for it.
+- **Depends on:** A2.
+
 #### V1 Release test pass
 
 - **Goal:** run success criteria 1 to 3 in one documented session: vanilla leveling, Experience, save and load, and a long play session.
@@ -1349,7 +1406,8 @@ Three tasks, all after C7a, each **parallel**. Each hook calls `StatsService::ch
 
 - Sequential path: T1.1, then C4 and C1 and C2, then C3, C5, C5a, C6, C7, C8, C7a, G1, G2, G3, G5, U1, A1, A2, A3, K1, V1. U2 is dropped for v1 (D8) and is not in the order.
 - Parallel tracks:
-  - T1.2 and the spikes S1 to S8 run alongside Phase 2. S8 waits on the Wine Mono user action.
+  - T1.2 and the spikes run alongside Phase 2. S1 to S6b and S8 are done; S9 and S10 (PR #55) run at any time.
+  - The tasks of PR #55: C5b runs after C7a and C8 (shared service files); G7a and G7b follow S10, C5b and G1, and G11 follows S9, C5b and G1, each in parallel with the other G tasks. G7a's site (37998+0xC7) is not one of G7's, so G7a keeps its hook in its own file. R1 follows A2.
   - T1.3 (sanitizer CI) touches only the presets, the workflow, `CONTRIBUTING.md` and the README, and runs at any time.
   - C1, C2 and C4 run in parallel. C9 runs in parallel with C8 and C7a; C8 and C7a share the service files, so they run one after the other, in either order.
   - The stat box amendments of PR #31: C9a only adds files and runs at any time. C3a runs in parallel with C8, C7a and C9a. C9b follows C3a, C9a and the merge of C8 (`stat_value.h`), and runs in parallel with C7a. C3b (PR #33) runs at any time. C9c follows C9b and C3b. C9d (S2) runs at any time once PR #41 is merged. U1 needs C9c and C9d, A1 needs C9b.
@@ -1371,12 +1429,13 @@ Three tasks, all after C7a, each **parallel**. Each hook calls `StatsService::ch
   - The sanitizers find only errors the tests execute. The PR #37 pattern shows only under a compiler without P2718R0 (GCC 13 in CI), so a local run with GCC 15 can pass where CI fails.
   - Settled (user decision, 2026-11-27, #50): the sanitizer run is one of the local checks, for the changes that [CONTRIBUTING.md#workflow](../../CONTRIBUTING.md#workflow) step 3 names.
 - **Cross build:** CommonLibSSE-NG and the vcpkg ports must build with clang-cl and lld-link against xwin. Port build scripts that assume MSVC can fail. T1.1 showed that the CommonLibSSE-NG custom ports cover this (the directxtk shaders need Wine and llvm-mingw); for a new failing dependency the fallback is to vendor it as a submodule.
-- **Papyrus under Wine (S8):** resolved: the compiler runs under Wine 10.0 with Wine Mono 11.3.0 ([S8 result](#s8-result)). What is left: CI cannot compile Papyrus without the Creation Kit's files, so the scripts are built and checked only locally, and a fresh Wine prefix needs Wine Mono installed by hand. The `.pex` header carries the build machine's user and host name, which a release step must blank (planned separately).
+- **Papyrus under Wine (S8):** resolved: the compiler runs under Wine 10.0 with Wine Mono 11.3.0 ([S8 result](#s8-result)). What is left: CI cannot compile Papyrus without the Creation Kit's files, so the scripts are built and checked only locally, and a fresh Wine prefix needs Wine Mono installed by hand. The `.pex` header carries the build machine's user and host name, which R1 blanks.
 - **S1 fails:** if the LevelUp menu cannot be suppressed cleanly, ST-19 and success criterion 1 need the revert fallback, or a PRD change. This is the highest-risk spike, so run it first. Resolved: suppression works with Experience ([S1 result](#s1-result)). What is left: 1.6.x, level-up menu mods and the game without Experience are untested (the hook has no 1.7.x-only offset). `setlevel`-style level changes are settled by ST-18: they are not level-ups, and G5 counts only the hook path.
 - **Stat box text (S2, U1):** paging (C9c) counts the model's lines, not the lines the box draws, and a line longer than about 40 characters wraps. S2 showed that the box never cuts off or scrolls but shrinks its font, readable up to about 30 lines, so 15 lines per page leave room for wrapped lines; a page of many long provider lines can still become small. With vertical buttons, 10 fit with 16 lines of text; the ∞ glyph is missing, so C9d shows `--` ([S2 result](#s2-result)). Left open: the game without SkyUI, other resolutions and the gamepad's Y, which the user checks by hand in U1. If those differ, the ways out (a lower default, fewer buttons, short names only) are for the user to decide, since they change what ST-24 shows.
 - **Warning write-back (C10, K1):** the plugin writes its own INI while the game runs. Under a mod manager's virtual file system (Mod Organizer 2) the write can land in another folder than the user's copy (the overwrite folder), or fail; a user editing the INI at the same time can lose an edit or the dismissal. K1 checks the write under the test install's setup and logs the path written; a failure only brings the warning back at the next load (assumption 18). If a message box does not show over the main menu, the warning moves to the first game start or load, as ST-28 allows (K1).
 - **Escape in a message box (U1, K1):** if Escape or the gamepad's cancel button closes a box without calling the callback, or closes the skills menu behind it, the box flow of ST-21 and the warning may need `isCancellable` or `cancelButtonIndex` set; which behaviour is wanted is the user's decision (assumption 19).
 - **Damage split (S4, G7):** the split sits at one call inside `DoDamage`, which nothing in the test install patches ([S4 result](#s4-result)). A combat overhaul that replaces `DoDamage` or that call makes the scan fail and turns the redirection off; one that only redirects `ProcessHit`'s call still reaches it. No overhaul was tested, and a lethal split hit, a hit split to no Health damage and poison were not seen in game, so G7 checks them.
+- **END's small effects and the sneak reveal (S9, S10):** S10 may find no site for the breath time or the fall damage amount that works without an ESP, and S9 no cue that does; then ST-11's or ST-13a's effect cannot be built as the PRD has it, which goes back to the user. skyrim-acrobatics-ng in the test install may change fall damage itself, so G7a's effect has to be checked with it.
 - **Check hooks (S6b):** resolved in part: persuasion and intimidation can be changed without an ESP by swapping their condition functions in the script function table ([S6b result](#s6b-result)). What is left: the conditions run before the dialogue menu opens and also outside persuasion, so G10c needs a filter that S6b did not find; if none works, the check would also change other Speechcraft conditions, which goes back to the user. Lockpicking, pickpocket and barter were not reached in game.
 - **Magic crit (S5):** resolved: spell crits scale an effect's magnitude once, in `AdjustForPerks`, before any damage is dealt, so they do not overlap with the S4 split, which then splits the scaled damage ([S5 result](#s5-result)). What is left: G8 must tell cast spells and staves apart from hazards, enchantments and poisons (ST-13), and a combat overhaul that replaces 44016 or the vtable slots makes the scans fail; none was tested.
 - **NPC actor-value persistence:** permanent modifiers on non-persistent NPCs reset when the actor respawns, but the ledger in the co-save does not. G2 and G3 must reconcile this, and OQ-1 may change how much NPC data exists at all.
