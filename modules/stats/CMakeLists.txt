@@ -5,6 +5,7 @@ find_package(SimpleIni CONFIG REQUIRED)
 add_library(tom_stats_core STATIC
     core/src/actor_stats.cpp
     core/src/check.cpp
+    core/src/config/configuration.cpp
     core/src/config/settings.cpp
     core/src/config/table_reader.cpp
     core/src/config/tables.cpp
@@ -37,6 +38,7 @@ if(TOM_BUILD_TESTS)
     add_executable(tom_stats_core_tests
         tests/unit/actor_stats_test.cpp
         tests/unit/check_test.cpp
+        tests/unit/configuration_test.cpp
         tests/unit/curve_parse_test.cpp
         tests/unit/curve_test.cpp
         tests/unit/default_tables_test.cpp
@@ -71,9 +73,11 @@ endif()
 
 if(TOM_BUILD_PLUGIN)
     add_library(tom_stats_plugin SHARED
+        plugin/src/GameConfig.cpp
         plugin/src/LevelUpHook.cpp
         plugin/src/main.cpp
         plugin/src/Messaging.cpp
+        plugin/src/Service.cpp
     )
     set_target_properties(tom_stats_plugin PROPERTIES OUTPUT_NAME "trials-of-mastery-stats")
     target_precompile_headers(tom_stats_plugin PRIVATE plugin/src/PCH.h)

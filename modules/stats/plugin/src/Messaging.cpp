@@ -1,5 +1,6 @@
 #include "Messaging.h"
 
+#include "GameConfig.h"
 #include "LevelUpHook.h"
 
 #include <cstdint>
@@ -43,6 +44,7 @@ void onMessage(Messaging::Message* message)
 	if (message->type != Messaging::kDataLoaded) {
 		return;
 	}
+	loadConfigurationAndService();
 	registerLevelUpDiagnostics();
 	if (!installLevelUpHook()) {
 		SKSE::log::error("The vanilla LevelUp menu is not replaced");
