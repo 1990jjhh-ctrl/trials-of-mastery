@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 
 option(TOM_BUILD_TESTS "Build the unit tests of the core libraries" ON)
 option(TOM_BUILD_PLUGIN "Build the SKSE plugin DLLs (Windows cross build only)" OFF)
+option(TOM_BUILD_PAPYRUS "Compile the Papyrus scripts (needs Wine and a Skyrim install with the Creation Kit)" OFF)
 
 # Must be set before project(), which runs the vcpkg manifest install.
 if(TOM_BUILD_TESTS)
@@ -40,6 +41,10 @@ if(TOM_BUILD_PLUGIN)
     set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
     set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
     include(lib/skyrim-mod-toolchain/cmake/commonlibsse.cmake)
+endif()
+
+if(TOM_BUILD_PAPYRUS)
+    include(cmake/papyrus.cmake)
 endif()
 
 add_subdirectory(modules/stats)

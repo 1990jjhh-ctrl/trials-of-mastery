@@ -93,3 +93,10 @@ if(TOM_BUILD_PLUGIN)
     )
     tom_enable_warnings(tom_stats_plugin)
 endif()
+
+if(TOM_BUILD_PAPYRUS)
+    tom_add_papyrus_scripts(tom_stats_papyrus
+        OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/Scripts"
+        SOURCES papyrus/TrialsOfMasteryStatsSpike.psc
+    )
+endif()

@@ -27,6 +27,15 @@ ctest --preset core-asan -R "<test name>"  # single test, after the line above
 
 `scripts/test.sh` runs the `core` preset (`cmake --preset core`, `cmake --build --preset core`, `ctest --preset core`); the cross build uses the `plugin` preset. Both are in [CMakePresets.json](CMakePresets.json).
 
+Papyrus scripts are not built by default. They need the Creation Kit (its `Papyrus Compiler` folder and the vanilla sources unpacked to `Data/Source/Scripts`) and Wine with [Wine Mono](https://gitlab.winehq.org/wine/wine/-/wikis/Wine-Mono) installed in the prefix (`wine msiexec /i wine-mono-<version>-x86.msi`). The `.pex` files end up in `build/<preset>/modules/<module>/Scripts/`:
+
+```sh
+cmake --preset plugin -DTOM_BUILD_PAPYRUS=ON -DTOM_SKYRIM_DIR="<Skyrim Special Edition folder>"
+cmake --build --preset plugin
+```
+
+The other cache variables are in [cmake/papyrus.cmake](cmake/papyrus.cmake).
+
 Formatting:
 
 ```sh
