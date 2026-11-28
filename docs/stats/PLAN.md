@@ -68,6 +68,7 @@ These are the user's answers to the decisions in the first draft of this plan.
     - [S4](#s4-result): the damage hooks of melee hits ran on worker threads (436 to 448), those of a Firebolt's ticks on the thread that received `kPostLoad` (380), fall damage on a worker (440); the hooks were installed on the `kDataLoaded` thread (584).
     - [S5](#s5-result): the physical crit hooks ran on worker threads (428 to 440); the spell hook on workers and, for a fire hazard, on the `kPostLoad` thread (388), which also ran the effect ticks.
     - [S6a](#s6a-result): `PlayerCharacter::Update` and `HandleHealthDamage` ran on the thread that received `kPostLoad` (376), as the effect ticks did in S4 and S5; the SKSE messages `kPostLoad`, `kInputLoaded`, `kPreLoadGame` and `kPostLoadGame` arrive there too (all runs), and so did a task queued with `AddTask` in the S7 run. So that thread is the game's main loop; `kDataLoaded` arrives on another one (576 or 584), which the prototypes' logs call "main" by mistake. Animation events, hits, topic info and the resistance check ran on workers (428 to 440).
+    - [S6b](#s6b-result): detection and the dialogue conditions ran on worker threads (428 to 440).
 16. **N and claims are session state (user decision, 2026-11-26):** as [§8](PRD.md#8-constraints) has it, a save stores `r` but neither N nor the claims of advancing (ST-6) and point assignment (ST-22). N comes from the INI each session, so a changed N applies to existing saves, and a claiming module (the mastery module) sets it again through the API. The claiming module also claims again each session. So C8 stores neither, and a revert keeps both, like crit shifts and XP modifiers.
 17. **Stat box display (from PRs #31 and #33, C3a, C3b, C9a, C9b, C9c):** ST-21 and ST-24 leave these details open. The ones marked *user decision* are the user's answers of 2026-11-26; the others are plan choices:
     - *User decision:* "as in the stats file" means the order in which the stats files of the merge (default, patches, mod patches, in merge order, each in its text order) first name a stat, with each stat's group taken from the merged table. A group set only by an API-registered entry is not a stats-file group. The shipped default is reordered so its groups come out as [§7.8](PRD.md#78-configuration) lists them: Warrior, Mage, Thief, Other.
@@ -926,6 +927,40 @@ Not covered:
 - **The social actions:** the bridge cannot target NPCs, so trade, persuasion, intimidation, bribes and normal interactions inside dialogue were not reached.
 - **1.6.x:** untested; nothing is patched, but the vtable IDs and event names are not checked there.
 
+#### S6b result
+
+Run on 2026-11-28 on 1.7.104 with Experience, CSF 3.2.0, Beyond Mastery, SkyUI and skyrim-acrobatics-ng, through the skyrim-mcp bridge in `qasmoke`, in Belethor's shop; no crash log. **Every default check has a site in the game's own formula, and persuasion and intimidation can be changed without an ESP by swapping their condition functions; the game never runs its detection check with the player as the detector, and the dialogue conditions run before the dialogue menu opens.** The prototype is `modules/stats/plugin/src/CheckSpike.cpp` and `.h` on the branch `stats/s6b-checks-spike` (ddb2a4e). That branch stays unmerged, as the reference for G10a to G10c.
+
+Where the checks are computed (disassembly of `SkyrimSE.exe` 1.7.104; Address Library IDs are AE). Each formula also runs its own perk entry (`BGSEntryPoint::HandleEntryPoint`, 23526):
+
+- Lockpicking: the lockpicking menu sets up a lock in 51964 (from 51950). With the player's Lockpicking it calls, once each: 26488, the sweet spot (skill, lock level, broken picks, Mod Lockpick Sweet Spot), at +0x90; 26489, the partial pick angle, at +0xA8; 26490, the pick break, at +0x1AF. Each call follows `movaps xmm0, xmm10` (the skill).
+- Pickpocket: 26379 (`AIFormulas::ComputePickpocketSuccess`: thief and target Pickpocket, value, weight, thief, target, detected, item; Mod Pickpocket Chance; clamped to `fPickPocketMin/MaxChance`), called by the steal attempt 40654 at +0x12C (from 51141, which rolls 0 to 99 below the chance) and by the container menu's item card 51130 at +0x213 (the chance shown).
+- Sneak and detection: 37774 (from the detection update 42742) calls 26365 once, at +0x5C2, with the detector, the target, the detector's Sneak as its perception, the target's Sneak and 21 values on the stack (distance, light, line of sight, sneaking, movement, combat, and out pointers for the sound, visibility and skill terms). For the player as target, 26365 turns the skill into `fPlayerDetectionSneakMult × skill + fPlayerDetectionSneakBase`, runs Mod Detection Sneak Skill and Mod Detection Movement, and returns the detection level. 26366 (sound events) is called twice from 37774 and not hooked.
+- Persuasion: vanilla dialogue uses the condition `GetActorValue Speechcraft` (function index 14, condition function 21416) on the player against the globals `SpeechEasy`, `SpeechAverage` and `SpeechHard`. Intimidation uses `GetIntimidateSuccess` (index 655, condition function 21735), which calls the formula 37500 (player and target Speech, `fIntimidateSpeechcraftCurve`, both levels, Mod Player Intimidation, the target's confidence). `TESConditionItem::IsTrue` (29924) calls a condition function through the script function table (361120; entries of 0x50 bytes, the condition function at +0x40), so a condition is hooked by replacing that pointer, in the game's writable data.
+- Barter: the barter menu (vtable 214926, slot 4, 50945) calls 26464 at +0x7B3 when it opens (Speech, out buy and sell multipliers; `fBarterMin/Max`, `fBarterBuyMin`, `fBarterSellMax`), then Mod Buy Prices (8) at +0x7EA and Mod Sell Prices (0x3C) at +0x805 with the merchant, clamps both and passes them to the movie's `SetBarterMultipliers`, which prices the items.
+
+The prototype's hooks (a JSON file in `Data/SKSE/Plugins` sets an adjustment per check, all off by default, and is read again when it changes): the call sites above, each found by its register setup before the call (as many matches as expected), and the two condition-function pointers. Each can scale or add to its input or result.
+
+Evidence (plugin log):
+
+| Check | Result |
+| --- | --- |
+| Install log | All call sites found with vanilla targets: lock setup 51964+0x90, +0xA8, +0x1AF; pickpocket 40654+0x12C and 51130+0x213; detection 37774+0x5C2; barter 50945+0x7B3, +0x7EA, +0x805. Both condition functions in 361120 vanilla and swapped. No entry detoured. |
+| Detection, far (Belethor, Sneak 22; the player sneaking, Sneak 15) | 1398 units, no line of sight: level −20 (sound 0, visibility 0, skill term −5.86). |
+| Detection, close | 36 units, line of sight: level 251 (sound 194.33, visibility 69.09, skill term 2.69). |
+| The player's Sneak +200 | At 42 units: skill term −37.37, level 209, so the Sneak input works. Not sneaking at 29 units: skill term 10.75, level 259. |
+| Who detects whom | 42 calls of 26365, all with the player as target, none with the player as detector. |
+| Activating Belethor | `GetActorValue Speechcraft` on the player (20) once and `GetIntimidateSuccess` on Belethor four times (player Speech 20 at level 1 against Speech 27 at level 4, Confidence 2: 0), all before the dialogue menu opened. |
+| Threads | Detection and the conditions on worker threads 428 to 440; install on 576 (`kDataLoaded`). |
+
+Not covered (the bridge cannot target containers, locks or NPCs, nor pick dialogue options):
+
+- **Lockpicking:** the sweet spot, the partial pick angle and a pick break.
+- **Pickpocket:** the item card's chance and the attempt.
+- **Barter:** the prices in the menu and a real transaction.
+- **Persuasion and intimidation:** a real dialogue option with the condition, and whether the dialogue menu's state, the speaker or the condition's subject can tell those calls apart from the evaluation at activation.
+- **1.6.x:** untested; the sites come from scans and the table index from the game's own table.
+
 #### S7 result
 
 Run on 2026-11-27 and 2026-11-28 on 1.7.104 with Experience, CSF 3.2.0, Beyond Mastery, SkyUI and skyrim-acrobatics-ng (the CSF skill `acrobatics`, `useMult` 1, `useOffset` 0), through the skyrim-mcp bridge in `qasmoke`. **CSF reports its level-ups through its SKSE interface, vanilla `SkillIncrease::Event` fires above 100, and multiplying the XP right after CSF's own Mod Skill Use perk entry stacks multiplicatively with the perks, for uses only.** The prototype is `modules/stats/plugin/src/CsfSkillSpike.cpp` and `.h` on the branch `stats/s7-csf-skill-spike` (14658ec), with the trampoline raised from 28 to 56 bytes in `main.cpp` and a second `SKSE::Trampoline` of 0x100 bytes allocated near `CustomSkills.dll`. That branch stays unmerged, as the reference for G4 and G6.
@@ -1146,16 +1181,26 @@ These are three tasks with no shared files, all after G1, each **parallel** with
 
 #### G10 Action checks
 
-Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsService::checkValue` and `checkResult` (C7a) inside the game's own computation, records which thread it runs on and follows G1's thread rule for values needed at once (assumption 15):
+Three tasks, all after C7a, each **parallel**. Each hook calls `StatsService::checkValue` and `checkResult` (C7a) inside the game's own computation, records which thread it runs on and follows G1's thread rule for values needed at once (assumption 15); in S6b every check ran on worker threads (428 to 440). The sites are those of the [S6b result](#s6b-result), each found by its scan (as many matches as expected, vanilla targets); a site that is not found stays unpatched for the session, and the log says why, with no message box ([D9](#decisions-taken)).
 
 - **G10a:** lockpicking and pickpocket.
-- **G10b:** sneak and detection.
+  - Lockpicking: the three calls in the lock setup 51964: the sweet spot 26488 at +0x90, the partial pick angle 26489 at +0xA8 and the pick break 26490 at +0x1AF. Which of them the check drives (ST-15 names the sweet spot) is part of the result mapping, OQ-5.
+  - Pickpocket: the calls of 26379 in the steal attempt (40654+0x12C) and in the item card (51130+0x213), both, so the chance shown is the chance rolled.
+- **G10b:** sneak. The detection check of PER is removed (PR #55): the game never runs its detection check with the player as the detector (S6b), and PER's sneak reveal is a named effect (ST-13a), planned separately.
+  - The call of 26365 at 37774+0x5C2 where the player is the target, with the player's Sneak as the input S6b changed (`+200` took the skill term from 2.69 to −37.37 at the same distance).
+  - Removes the `Detection` action from `modules/stats/data/actions/_default.json`, with the unit tests that name it.
 - **G10c:** persuasion, intimidation and barter.
+  - Persuasion: the condition function of `GetActorValue` (21416) in the script function table (361120), for Speechcraft on the player; intimidation: that of `GetIntimidateSuccess` (21735). Both are swapped in the table, without an ESP. The vanilla functions are called for every other use.
+  - Barter: the call of 26464 at 50945+0x7B3, before Mod Buy Prices (+0x7EA) and Mod Sell Prices (+0x805), so the perks still apply on top.
+  - The dialogue conditions run when the player activates the NPC, before the dialogue menu opens (S6b), and `GetActorValue Speechcraft` is used by conditions outside persuasion too. So G10c cannot tell a persuasion check by the open menu. Which filter it uses (the speaker of the conversation, the condition's subject and the topic, or the condition's run context) is an open technical point for G10c, to settle in game before it changes a value; until then G10c logs every call it would change.
+- **Open, raised with the user before G10 starts (with OQ-5):** each site can take `checkResult` as the formula's skill input, which keeps the game's lock levels, GMSTs and perk entries, or as the formula's result, which replaces them (assumption 7 maps `I` to the game quantity). The S6b prototype tried both; the choice changes what the perks do, so it is not taken here.
 - **Covers:** ST-15 (checks).
 - **Verification:**
   - `log`: shows `I` and the resulting game value per attempt.
   - `in-game`: raising DEX widens the sweet spot; a novice skill level with a high stat still fails master-level checks.
-- **Depends on:** weights and mappings depend on OQ-5.
+  - G10b, through the bridge as in S6b: near a merchant while sneaking, the logged detection level changes with DEX and Sneak as the check says, and the log shows no call with the player as detector.
+  - Manual checks, run by the user by hand, since the bridge cannot target locks, containers or NPCs: lockpicking (sweet spot, partial pick, a broken pick) on locks of two levels; pickpocket chance in the item card and the attempt; barter prices in the menu and the gold of a real sale and purchase; a persuade and an intimidate option in dialogue, each with a stat high enough and too low, and that activating the NPC alone changes nothing visible.
+- **Depends on:** C7a, G1. S6b is done ([S6b result](#s6b-result)). Weights and mappings depend on OQ-5.
 
 ### Phase 5: Stat box UI
 
@@ -1297,7 +1342,7 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
 - **Warning write-back (C10, K1):** the plugin writes its own INI while the game runs. Under a mod manager's virtual file system (Mod Organizer 2) the write can land in another folder than the user's copy (the overwrite folder), or fail; a user editing the INI at the same time can lose an edit or the dismissal. K1 checks the write under the test install's setup and logs the path written; a failure only brings the warning back at the next load (assumption 18). If a message box does not show over the main menu, the warning moves to the first game start or load, as ST-28 allows (K1).
 - **Escape in a message box (U1, K1):** if Escape or the gamepad's cancel button closes a box without calling the callback, or closes the skills menu behind it, the box flow of ST-21 and the warning may need `isCancellable` or `cancelButtonIndex` set; which behaviour is wanted is the user's decision (assumption 19).
 - **Damage split (S4, G7):** the split sits at one call inside `DoDamage`, which nothing in the test install patches ([S4 result](#s4-result)). A combat overhaul that replaces `DoDamage` or that call makes the scan fail and turns the redirection off; one that only redirects `ProcessHit`'s call still reaches it. No overhaul was tested, and a lethal split hit, a hit split to no Health damage and poison were not seen in game, so G7 checks them.
-- **Check hooks (S6b):** persuasion and intimidation in vanilla are dialogue conditions on Speech, not a formula. Replacing them may need condition-function hooks, or may not be possible without an ESP, which the "no ESP" constraint rules out.
+- **Check hooks (S6b):** resolved in part: persuasion and intimidation can be changed without an ESP by swapping their condition functions in the script function table ([S6b result](#s6b-result)). What is left: the conditions run before the dialogue menu opens and also outside persuasion, so G10c needs a filter that S6b did not find; if none works, the check would also change other Speechcraft conditions, which goes back to the user. Lockpicking, pickpocket and barter were not reached in game.
 - **Magic crit (S5):** resolved: spell crits scale an effect's magnitude once, in `AdjustForPerks`, before any damage is dealt, so they do not overlap with the S4 split, which then splits the scaled damage ([S5 result](#s5-result)). What is left: G8 must tell cast spells and staves apart from hazards, enchantments and poisons (ST-13), and a combat overhaul that replaces 44016 or the vtable slots makes the scans fail; none was tested.
 - **NPC actor-value persistence:** permanent modifiers on non-persistent NPCs reset when the actor respawns, but the ledger in the co-save does not. G2 and G3 must reconcile this, and OQ-1 may change how much NPC data exists at all.
 - **Skill XP hook (S3, G6):** the hook sits inside the game's skill XP routine, at a call that Experience and CSF leave alone on 1.7.104. A plugin that patches that call, or a 1.6.x build with other bytes, makes the scan fail and turns the learning bonus off, with a log line only (*user decision, 2026-11-27:* no warning on screen) ([S3 result](#s3-result)). The same holds for the CSF site from S7.
