@@ -76,13 +76,13 @@ Out of scope:
 | `k` | The number of active points; the exponent of the cost formula |
 | `r` | Growth factor of the cost formula |
 | Stat box | The message box that shows the stats and handles level-ups (ST-21, ST-24) |
-| Effect | What a stat changes in the game: an actor-value effect (ST-10) or a named effect (ST-11 to ST-13) |
+| Effect | What a stat changes in the game: an actor-value effect (ST-10) or a named effect (ST-11 to ST-13a) |
 | Action | Something the character does that the module hooks: it can have a check and give stat XP (ST-15) |
 | Check value | `I`, the value an action's check computes from stats and skills |
 
 ## 7. Requirements
 
-Requirement IDs use the prefix ST and run in document order.
+Requirement IDs use the prefix ST and run in document order. A requirement added between two others takes the number of the one before it and a letter (ST-13a), so existing IDs keep their numbers.
 
 ### 7.1 Stats
 
@@ -109,19 +109,20 @@ Default effects:
 | CON | Health pool and recovery; Magicka and Stamina recovery; resistance to poison and disease | |
 | INT | Magicka pool; resistance to magic damage | Learning speed (ST-12) |
 | WIS | Magicka recovery | Magic damage |
-| PER | | Learning speed (ST-12) |
+| PER | | Learning speed (ST-12), sneak reveal (ST-13a) |
 | END | Stamina pool and recovery; minor Health recovery; minor resistance to poison | Damage redirection, fall damage mitigation, breath duration (ST-11) |
 | CHA | | |
 
-What stats do in skill activities (sneak, pickpocket, lockpicking, detection, speech, intimidation) is defined by actions (ST-15).
+What stats do in skill activities (sneak, pickpocket, lockpicking, speech, intimidation) is defined by actions (ST-15).
 
-- ST-9: Effects are data. Each stat's entry in the stats file lists its effects, each with a [curve](../PRD.md#41-curves). An effect is either an actor-value effect (ST-10), which works for any actor value, or a named effect that the module implements and the file parameterizes (ST-11 to ST-13). Stats never raise skill levels. Once the stats file exists, it holds the effects and the table above only describes them. A named effect can be listed on any stat, registered ones included; its values from all stats that list it add up. The file sets per named effect whether it is relative, like actor-value effects (`curve(x) − curve(0)` with `x = effective stat − default base`, ST-10), or absolute, taking `curve(effective stat)`; without that setting it is relative.
+- ST-9: Effects are data. Each stat's entry in the stats file lists its effects, each with a [curve](../PRD.md#41-curves). An effect is either an actor-value effect (ST-10), which works for any actor value, or a named effect that the module implements and the file parameterizes (ST-11 to ST-13a). Stats never raise skill levels. Once the stats file exists, it holds the effects and the table above only describes them. A named effect can be listed on any stat, registered ones included; its values from all stats that list it add up. The file sets per named effect whether it is relative, like actor-value effects (`curve(x) − curve(0)` with `x = effective stat − default base`, ST-10), or absolute, taking `curve(effective stat)`; without that setting it is relative.
 - ST-10: An actor-value effect adds `curve(x) − curve(0)` to an actor value, with `x = effective stat − default base`, so a new character with no adjustments has the vanilla values, and a race's or class's adjustment (ST-3) counts from the start: +2 STR from a race adds what the curve gives for `x = 2` at multiplier 1 (ST-8). Pools are actor-value effects: by default Health from CON, Stamina from END, Magicka from INT. Ascending shrinks the pools together with the stats, in line with the level reset that comes with it. Pools never receive points directly. The module never sets an actor value's absolute value: it stores its last contribution per actor value in the save and, when a stat changes, adds only the difference to the actor value's permanent modifier. Race values, Fortify effects and other mods' changes stay as they are.
 - ST-11: By default END redirects a small share of damage taken into a pool: physical damage into Stamina, magic damage into Magicka. When the pool is empty the damage goes directly to Health. When the pool holds less than the redirected amount, the available amount is taken from the pool and the remainder goes to Health. The share is a function of the stats that list the effect, with its parameters in the stats file. The share is taken from the damage after the game's difficulty multiplier, so it is exactly what the actor would take. Damage over time is split per tick, like instant damage. Damage with no type, such as falling and drowning, and poison damage are not redirected and go directly to Health; poison damage is every Health damage the game resists with Resist Poison, such as poisons applied to weapons, creature poison (spiders, chaurus) and poison traps.
 
   END also has a small share in three more effects by default, each with its curve in the stats file: resistance to poison, an actor-value effect on `PoisonResist` (ST-10) that lowers the effectiveness of poisons; fall damage mitigation, a named effect that lowers fall damage; and breath duration, a named effect that changes how long the character can hold their breath before drowning. The game has no actor value for fall damage or breath, so these two are named effects.
 - ST-12: Learning speed comes from INT and PER by default, each up to +100 % skill XP, added together for a maximum of +200 % (×3) skill XP for every skill, with the curve in the stats file. The +200 % is a hard cap on the stat bonus, whatever curve the file sets; bonuses from outside the module are not capped. The stat bonus can be a malus, but never below −100 %, so it never takes skill XP below 0. It multiplies with other skill XP bonuses (Guardian Stones, effects, other mods) and never replaces them. XP modifiers from other modules (ST-17) apply on top. Both apply to skill XP the player earns by using a skill; a whole level granted at once, by a skill book or a trainer, stays as the game gives it.
 - ST-13: DEX sets the base crit chance for physical and magic attacks by default, with the curve in the stats file. The base crit chance is added after the game's crit perks: perks such as Bladesman, Deep Wounds and Critical Shot set the game's chance, and the base crit chance is added on top, so DEX always counts. For a weapon, the base crit chance is scaled by the weapon's crit chance multiplier, so a weapon with a multiplier of 0 never crits, as in vanilla, and one with 1.0 is unaffected. Magic crits apply only to Health damage from spells the actor casts and from staves; weapon enchantments, poisons, hazards and traps never crit. A magic crit multiplies the effect's Health damage by a factor that the stats file sets as a parameter of the effect. The default crit effects are absolute (ST-9), so the chance follows the effective stat itself: with a linear curve through 0, DEX 12 gives 1.2 times the crit chance of DEX 10. Other modules, such as the luck module, may shift it through the API: each registers a function under its own key that receives the base crit chance and returns a shift, and the shifts add up. Because the function is called with the current value, a shift never lags behind a stat change.
+- ST-13a: PER reveals sneaking NPCs to the player by default: a sneaking NPC within a range of the player, set by the player's PER with the curve in the stats file, gets a visual cue. The game never runs its detection check with the player as the detector, so this is a named effect, not a check (ST-15).
 
 ### 7.4 Training and actions
 
@@ -143,7 +144,7 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, detection, sp
   - Sprinting (it must consume Stamina) trains END. Walking while overencumbered trains STR; a character is overencumbered when the carried weight is above its maximum carry capacity.
   - Trading trains CHA: `XP = 0.1 · M^0.5` (power curve, `α = 0.1`, `λ = 0.5`), with M the money value of the transaction: 100 septims give 1 XP, 1000 septims about 3 XP, 10 000 septims 10 XP. Persuading and intimidating train CHA, with the amount depending on the target; intimidating does not train STR. Normal interactions give 1 XP.
 
-  Default checks: lockpicking (Lockpicking, DEX), pickpocket (Pickpocket, DEX), sneak (Sneak, DEX), detection of sneaking targets (PER), persuasion and barter (Speech, CHA), intimidation (Speech, CHA, STR). Once the actions file exists, it holds the values and this list only describes them.
+  Default checks: lockpicking (Lockpicking, DEX), pickpocket (Pickpocket, DEX), sneak (Sneak, DEX), persuasion and barter (Speech, CHA), intimidation (Speech, CHA, STR). Once the actions file exists, it holds the values and this list only describes them.
 - ST-16: Skills from other mods, including Custom Skills Framework skills, train stats only when a mapping is registered for them. Skill levels above 100 (Beyond Mastery, Experience) keep training stats with the same rule. Other mods can add actions: a mod registers the action through the API, hooks the game event itself, and asks the module for the check value and to apply the action's training. Patches can then tune the action like any other.
 - ST-17: Other modules can register XP modifiers through the API: per skill for skill XP and for the stat XP a skill gives on level-up (ST-14), and per action for the stat XP the action gives (ST-15). A modifier below −100 % is rejected, so a modifier never takes XP below 0. The professions module uses this for its class modifiers.
 
@@ -252,3 +253,4 @@ Status levels and domain ownership are defined in the [overview](../PRD.md#5-com
 - STR XP for unarmed attacks by glove weight (ST-15): the curve and its amounts.
 - PER XP for fighting (ST-15): what counts as fighting and how much XP it gives.
 - END's resistance to poison, fall damage mitigation and breath duration (ST-11): their default curves. They are set later and must stay small.
+- Sneak reveal (ST-13a): how the cue looks (a shader, a HUD marker, ...), the range curve from PER, and whether the NPC must be in the player's line of sight.
