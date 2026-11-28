@@ -23,6 +23,11 @@ struct PluginInfo
 	std::string extension;
 };
 
+// Splits a plugin file name at its last dot: "Requiem.esp" gives "Requiem"
+// and ".esp". A name without a dot, or with only a leading one, has no
+// extension.
+[[nodiscard]] PluginInfo splitPluginFileName(std::string_view fileName);
+
 // What the merge needs to know about the game's plugins. The game layer
 // implements it; tests use a fake.
 class PluginQuery

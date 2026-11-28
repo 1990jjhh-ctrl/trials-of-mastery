@@ -406,6 +406,15 @@ std::string TableSource::path() const
 	return name;
 }
 
+PluginInfo splitPluginFileName(std::string_view fileName)
+{
+	const auto dot = fileName.rfind('.');
+	if (dot == std::string_view::npos || dot == 0) {
+		return { std::string(fileName), "" };
+	}
+	return { std::string(fileName.substr(0, dot)), std::string(fileName.substr(dot)) };
+}
+
 MergeResult mergeTable(std::span<const TableSource> sources, const PluginQuery& plugins, const nlohmann::json& registered, const EntryValidator& validator)
 {
 	MergeResult result;

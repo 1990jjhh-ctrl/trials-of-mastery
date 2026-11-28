@@ -7,6 +7,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -16,6 +17,7 @@ using tom::stats::MergeResult;
 using tom::stats::mergeTable;
 using tom::stats::PluginInfo;
 using tom::stats::PluginQuery;
+using tom::stats::splitPluginFileName;
 using tom::stats::TableSource;
 
 namespace
@@ -158,6 +160,24 @@ TEST_CASE("same-name plugins load the file at the last of them, with a warning",
 	REQUIRE(warnings.size() == 1);
 	CHECK(warnings[0].file == "plugins/Foo.json");
 	CHECK(warnings[0].detail == "Foo.esm, Foo.esp");
+}
+
+TEST_CASE("a plugin file name splits at its last dot", "[merge][plugins]")
+{
+	const auto check = [](std::string_view fileName, std::string_view name, std::string_view extension) {
+		const auto plugin = splitPluginFileName(fileName);
+		INFO(fileName);
+		CHECK(plugin.name == name);
+		CHECK(plugin.extension == extension);
+	};
+
+	check("Requiem.esp", "Requiem", ".esp");
+	check("Unofficial Skyrim Special Edition Patch.esp", "Unofficial Skyrim Special Edition Patch", ".esp");
+	check("Foo.Bar.esl", "Foo.Bar", ".esl");
+	check("Skyrim.ESM", "Skyrim", ".ESM");
+	check("NoExtension", "NoExtension", "");
+	check(".esp", ".esp", "");
+	check("", "", "");
 }
 
 TEST_CASE("objects merge key by key, recursively", "[merge][keys]")
