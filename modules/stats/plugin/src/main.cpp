@@ -1,6 +1,7 @@
 // SKSE entry point of the Stats plugin.
 
 #include "Messaging.h"
+#include "Serialization.h"
 
 SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
@@ -15,5 +16,6 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 		SKSE::log::critical("Could not register the SKSE message listener");
 		return false;
 	}
+	tom::stats::registerSerialization();
 	return true;
 }

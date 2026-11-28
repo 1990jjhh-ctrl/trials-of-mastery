@@ -3,6 +3,7 @@ find_package(SimpleIni CONFIG REQUIRED)
 
 # Game-independent formula and configuration core.
 add_library(tom_stats_core STATIC
+    core/src/actor_lifecycle.cpp
     core/src/actor_stats.cpp
     core/src/check.cpp
     core/src/config/configuration.cpp
@@ -36,6 +37,7 @@ if(TOM_BUILD_TESTS)
     include(Catch)
 
     add_executable(tom_stats_core_tests
+        tests/unit/actor_lifecycle_test.cpp
         tests/unit/actor_stats_test.cpp
         tests/unit/check_test.cpp
         tests/unit/configuration_test.cpp
@@ -73,12 +75,23 @@ endif()
 
 if(TOM_BUILD_PLUGIN)
     add_library(tom_stats_plugin SHARED
+        plugin/src/ActorLifecycle.cpp
+        plugin/src/DeltaLog.cpp
         plugin/src/GameConfig.cpp
         plugin/src/LevelUpHook.cpp
         plugin/src/main.cpp
         plugin/src/Messaging.cpp
+        plugin/src/Serialization.cpp
         plugin/src/Service.cpp
     )
+    # A test build for the in-game checks (plugin/src/TestHooks.h); never on
+    # for a release.
+    option(TOM_STATS_TEST_HOOKS "Build the Stats plugin with the hooks of the in-game checks" OFF)
+    if(TOM_STATS_TEST_HOOKS)
+        target_sources(tom_stats_plugin PRIVATE plugin/src/TestHooks.cpp)
+    else()
+        target_sources(tom_stats_plugin PRIVATE plugin/src/NoTestHooks.cpp)
+    endif()
     set_target_properties(tom_stats_plugin PROPERTIES OUTPUT_NAME "trials-of-mastery-stats")
     target_precompile_headers(tom_stats_plugin PRIVATE plugin/src/PCH.h)
     target_link_libraries(tom_stats_plugin PRIVATE tom_stats_core CommonLibSSE::CommonLibSSE)

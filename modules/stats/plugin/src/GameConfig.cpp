@@ -168,6 +168,9 @@ void load()
 	}
 	if (installService(std::move(service))) {
 		SKSE::log::info("Stats service built");
+		SKSE::log::info(
+			"TODO(OQ-1): placeholder NPC values, the default base plus the race adjustment until the API "
+			"sets them");
 	}
 }
 }
