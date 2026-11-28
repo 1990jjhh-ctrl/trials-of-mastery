@@ -62,6 +62,10 @@ These are the user's answers to the decisions in the first draft of this plan.
 13. **Open: default-base patch at a multiplier other than 1.** ST-3 says a patch that changes a default base leaves relative effects unchanged, since base and default base move together. With `x = effective − default base` and `effective = (base + …) · multiplier + modifier`, a change `d` of both moves `x` by `d · (multiplier − 1)`, so this holds only at multiplier 1. The plan checks it at multiplier 1 only and does not settle the other case; it is for the user to decide in the PRD (ST-3, ST-8, MA-3).
 14. **Tables fixed at construction (constraint, from C7):** `StatsService` takes its `Tables` in the constructor and never changes them, and `registerStat` fails for a stat without a stats-table entry, since the default base comes from there (ST-3). So every table entry, the API-registered ones included (A1, the luck module's LUC per [LU-1](../luck/PRD.md)), is merged and passed to `buildTables` before the service is built; G1 builds it after that, then calls `registerStat` for each registered stat. `registerStat` on a built service only activates a stat whose entry is already in the tables; a stat whose entry arrives later cannot be added in that session.
 15. **Threads (to settle in G1, before the first hook task):** `StatsService` has no locking. Its copy-on-write crit shifts (C7) protect only against re-entry on one thread: a shift that sets or removes shifts while `critChance` runs. Two threads calling the service at once are a data race. G1 sets the rule for the whole plugin, which each hook task, A1 and A2 follow: which threads may call the service, and how a hook that runs on another thread reaches it (a deferred call through the SKSE task interface, `SKSE::GetTaskInterface()->AddTask`, a lock in the plugin around the service, or a value cached on the main thread). A hook that needs a value at once, inside the game's own computation (G6 skill XP factor, G7 split, G8 crit chance, G10 check), cannot be deferred, so the rule must cover it. The PRD says nothing on threads; nothing about it is visible to the player, so it is a design choice for G1, not an open PRD question. What the [S7 result](#s7-result) logged: the plugin installs on the thread of `kDataLoaded` (588 and 576 in two runs). Console commands from the skyrim-mcp bridge ran on other threads (440, 380), and the skill XP hooks and the vanilla `SkillIncrease::Event` ran on the thread of the command. A task queued with `SKSE::GetTaskInterface()->AddTask` ran on yet another thread (376), on which CSF's `Advance`, its perk entry and its `SkillIncreaseEvent` ran. So the hooks and sinks run on whatever thread triggers the skill XP, which need not be the install thread. Which thread is the game's main loop in a normal game, without the bridge, is not recorded.
+
+    What the spike runs logged, for G1 to build the rule on (thread IDs are of one game session each):
+
+    - [S4](#s4-result): the damage hooks of melee hits ran on worker threads (436 to 448), those of a Firebolt's ticks on the thread that received `kPostLoad` (380), fall damage on a worker (440); the hooks were installed on the `kDataLoaded` thread (584).
 16. **N and claims are session state (user decision, 2026-11-26):** as [§8](PRD.md#8-constraints) has it, a save stores `r` but neither N nor the claims of advancing (ST-6) and point assignment (ST-22). N comes from the INI each session, so a changed N applies to existing saves, and a claiming module (the mastery module) sets it again through the API. The claiming module also claims again each session. So C8 stores neither, and a revert keeps both, like crit shifts and XP modifiers.
 17. **Stat box display (from PRs #31 and #33, C3a, C3b, C9a, C9b, C9c):** ST-21 and ST-24 leave these details open. The ones marked *user decision* are the user's answers of 2026-11-26; the others are plan choices:
     - *User decision:* "as in the stats file" means the order in which the stats files of the merge (default, patches, mod patches, in merge order, each in its text order) first name a stat, with each stat's group taken from the merged table. A group set only by an API-registered entry is not a stats-file group. The shipped default is reordered so its groups come out as [§7.8](PRD.md#78-configuration) lists them: Warrior, Mage, Thief, Other.
@@ -782,6 +786,50 @@ Not covered:
 - **The thread** the hooks run on was not recorded (assumption 15).
 - **1.6.x:** untested. The IDs are AE IDs and the sites come from the scans; whether the 1.6.x functions keep the same byte patterns is not checked.
 
+#### S4 result
+
+Run on 2026-11-27 on 1.7.104 with Experience, CSF 3.2.0, Beyond Mastery, SkyUI and skyrim-acrobatics-ng, through the skyrim-mcp bridge in `qasmoke`, at difficulty 2 (Adept, whose multiplier left the numbers as they were); no crash log. **Health damage can be split at one call inside `Actor::DoDamage`, after the difficulty multiplier, for physical and magic damage alike; nothing in the test install patches the damage path.** The prototype is `modules/stats/plugin/src/DamageSplitSpike.cpp` and `.h` on the branch `stats/s4-damage-split-spike` (9268ab5), with the trampoline raised from 28 to 104 bytes in `main.cpp`. That branch stays unmerged, as the reference for G7.
+
+How Health damage reaches an actor (disassembly of `SkyrimSE.exe` 1.7.104; Address Library IDs are AE):
+
+- A melee hit (38627) fills a `HitData` with `HitData::Populate` (44001): the attack damage and the attacker's perk entries, then 44016 (Mod Attack Damage, the target's Mod Incoming Damage, crits, spike S5), 44014 (armor, blocking) and 44015. It then calls `Actor::ProcessHit` (38586) at 38627+0x4A8, the call combat overhauls usually redirect. Projectile hits reach 38586 from other callers.
+- 38586 calls `Actor::DoDamage` (37335) at +0x4A7 with `HitData::totalDamage`, so armor, blocking and perks are in it.
+- Magic Health damage goes through `ValueModifierEffect::ModifyActorValue` (35086, vtable slot 0x20, shared by the accumulating and peak variants): for Health and a negative value it calls 37335 at +0x232 with the caster. Resistances and Mod Incoming Spell Magnitude are already in the effect's magnitude. Damage over time calls it on every update.
+- 37335 (target, damage, source, `dontAdjustDifficulty`) applies the difficulty multiplier (26503), then calls the actor-value change with a cause (38468) at +0x151 with the damage modifier, Health and −damage. Fall damage (37998+0xC7) and drowning (37348) call 37335 too, with no attacker.
+- 38468 changes the value, runs the death checks, and only then calls `Actor::HandleHealthDamage` (vtable slot 0x104, 38606), which sees the damage after Health has changed: too late for a split.
+- The console's `damageav` and Papyrus `DamageActorValue` go through the actor-value owner's `ModActorValue` (38467), which calls 38468 directly, past 37335.
+
+The prototype's hooks (a JSON file in `Data/SKSE/Plugins` sets the share, the hook that splits and the pool, and is read again when it changes):
+
+1. `hit`: the call of 37335 at 38586+0x4A7, found by its unique register setup before the call; a trampoline stub passes the `HitData` (r13) on. It marks the damage as physical for hook 3.
+2. `magic`: the call of 37335 at 35086+0x232, found the same way; a stub passes the effect (rdi) on. It marks the damage as magic for hook 3.
+3. `health`: the call of 38468 at 37335+0x151, after the difficulty multiplier. It reads the kind hooks 1 and 2 set (thread-local, for the one `DoDamage` call); a call from anywhere else is "other". The split takes `min(share × damage, pool)` off the pool (Stamina for physical, Magicka for magic) with `DamageActorValue` and passes the rest on to Health. Only the player is split.
+
+Before patching, the prototype checks that the entries of 44001, 38586, 37335, 35086 and 38468 are not detoured and that the vtable slots are vanilla.
+
+Evidence (plugin log; the player's Health stayed near its maximum, set high for the run). A bandit with a Steel Mace hits for 7.50, 15.00 with a power attack:
+
+| Check | Result |
+| --- | --- |
+| Install log | All three sites found, one vanilla call each; no entry detoured; `HandleHealthDamage` (slot 0x104 of `PlayerCharacter` 208040 and `Character` 207886), `ModActorValue` (slot 6 of 208050) and `ModifyActorValue` (slot 0x20 of 206143) vanilla; the melee call at 38627+0x4A8 goes to the vanilla 38586. |
+| Share 0, bandit hits | Hook 1 sees 7.50 (after armor, block and perks), hook 3 the same 7.500 as physical. |
+| Share 0.5 at `health`, full Stamina | 7.500 → 3.75 into Stamina, 3.75 to Health; a power attack 15.000 → 7.50 and 7.50. |
+| Partial pool (power attack, 4.97 Stamina) | 4.97 of 7.50 taken, 10.03 to Health, Stamina 0. |
+| Empty pool (`staminarate` 0) | 0 of 3.75 taken, 7.50 to Health. |
+| Firebolt from the bandit (share 0.5) | Hook 2 then hook 3 as magic: 25.000 at once, then the burn in ticks, 54 calls over about 1 s and 27.41 in total; each tick split on its own, 13.69 redirected into Magicka (85.00 to 71.29). |
+| Fall damage (`setpos z` +1000) | Hook 3 only, no attacker, kind other: 118.967, not split, Health 1000 to 881.03. |
+| `damageav`, Papyrus `DamageActorValue` | No line: they bypass 37335. |
+| Threads | Hits on 436 to 448, the Firebolt ticks on 380 (the thread of `kPostLoad`), the fall on 440; install on 584 (`kDataLoaded`). |
+
+Not covered:
+
+- **A lethal hit:** 38468 runs the death checks after the split value is applied, so a split hit that kills was not seen.
+- **Damage reduced to 0:** with a share that leaves no Health damage, whether 38468 still calls `HandleHealthDamage` (hit reactions, G9b's damage taken) is not checked.
+- **Projectile hits:** the callers of 38586 other than the melee hit are not mapped; hook 1 sits in 38586 itself, so they pass it, but no arrow hit the player.
+- **Poison, drowning, Dual and Absorb effects:** none reached the player in the run.
+- **Combat overhauls:** none is installed. Hook 3 is inside 37335, so an overhaul that redirects the call at 38627+0x4A8 and still calls 37335 passes it; one that replaces 37335 or the call at +0x151 makes the scan fail.
+- **1.6.x:** untested; the sites come from scans, as in the S3 result.
+
 #### S7 result
 
 Run on 2026-11-27 and 2026-11-28 on 1.7.104 with Experience, CSF 3.2.0, Beyond Mastery, SkyUI and skyrim-acrobatics-ng (the CSF skill `acrobatics`, `useMult` 1, `useOffset` 0), through the skyrim-mcp bridge in `qasmoke`. **CSF reports its level-ups through its SKSE interface, vanilla `SkillIncrease::Event` fires above 100, and multiplying the XP right after CSF's own Mod Skill Use perk entry stacks multiplicatively with the perks, for uses only.** The prototype is `modules/stats/plugin/src/CsfSkillSpike.cpp` and `.h` on the branch `stats/s7-csf-skill-spike` (14658ec), with the trampoline raised from 28 to 56 bytes in `main.cpp` and a second `SKSE::Trampoline` of 0x100 bytes allocated near `CustomSkills.dll`. That branch stays unmerged, as the reference for G4 and G6.
@@ -930,10 +978,23 @@ Not covered:
 #### G7 END damage redirection
 
 - **Goal:** redirect the END share of incoming damage into Stamina or Magicka per the C5 split.
-- **Covers:** ST-11.
-- **Interfaces:** the S4 hook reads `damageRedirectionShare` (C7) inside the game's damage computation, records which thread it runs on and follows G1's thread rule for values needed at once (assumption 15).
-- **Verification:** `in-game` plus `log`. With full, partial and empty pools, the logged split matches C5.
-- **Depends on:** S4, G3. The share depends on OQ-6.
+- **Covers:** ST-11 (damage redirection only; END's other effects of ST-11 are not part of G7).
+- **Interfaces:** the hooks of the [S4 result](#s4-result), with the user decisions of PR #55 (ST-11):
+  - Replaces the call of 38468 at 37335+0x151 (`DoDamage`'s Health change, after the difficulty multiplier) and splits there, so the share is taken from what the actor would take. Every call is split on its own, so damage over time is split per tick.
+  - Tells the kind apart as the prototype does: a thread-local mark set around the call of 37335 at 38586+0x4A7 (physical, with the `HitData`) and at 35086+0x232 (magic, with the effect), cleared after the call. A `DoDamage` call without a mark (fall damage 37998+0xC7, drowning 37348, any other caller) is not redirected (ST-11: damage with no type).
+  - Poison is not redirected (ST-11): a magic mark whose effect the game resists with Resist Poison counts as no mark. The test is the one `Actor::CheckResistance` (38737) applies (found in spike S6a): the magic item is a poison (`SpellType::kPoison`), or the effect's resist actor value is `PoisonResist`. G7 checks both cases in game (a weapon poison and a creature poison) before relying on the test.
+  - The split: `taken = min(share × damage, pool)`, taken off Stamina (physical) or Magicka (magic) with `DamageActorValue`, and `damage − taken` passed on to Health. The share is `damageRedirectionShare` (C7) of the damaged actor; G7 splits for every actor the service has stats for, as G3 applies effects, where the prototype split only the player.
+  - Finds each site by its scan from the S4 result (exactly one match), and checks that the call goes to the vanilla target. If a site is not found, nothing is patched, the log says why, and the redirection is off for the session, with no message box ([D9](#decisions-taken)).
+  - Needs the share inside the game's damage computation, on the thread of the hit (workers 436 to 448 in S4) or of the effect update (380, the `kPostLoad` thread), so it follows G1's thread rule for values needed at once (assumption 15). The hook logs its thread.
+  - The trampoline grows by the three calls and the two stubs (76 bytes in the prototype).
+  - Open technical points, not user decisions: a lethal split hit, a share that leaves no Health damage (whether `HandleHealthDamage` still runs, which G9b's damage taken uses), projectile hits, Dual and Absorb effects, combat overhauls and the 1.6.x byte patterns ([S4 result](#s4-result)).
+- **Verification:** `in-game` plus `log`, at a share set through a test patch of the stats file:
+  - with full, partial and empty pools, the logged split matches C5, as in the S4 result (a bandit's 7.50 at share 0.5: 3.75 and 3.75; with 4.97 Stamina left, 4.97 taken and the rest to Health; with `staminarate` 0 and no Stamina, all to Health);
+  - a Firebolt is split per tick into Magicka, and the logged ticks sum to the damage the effect dealt;
+  - fall damage (`setpos z` +1000) and console `damageav` are not split;
+  - at a difficulty other than Adept, the logged damage is after the difficulty multiplier and the split follows it;
+  - manual checks, run by the user by hand, since the bridge could not bring them about in S4: a frostbite spider's bite, a weapon poison applied by an NPC and a poison trap are not redirected; drowning is not redirected; a split hit that kills the player kills as usual; an arrow hit is split as physical.
+- **Depends on:** G3, G1. S4 is done ([S4 result](#s4-result)). The share depends on OQ-6.
 
 #### G8 DEX crit chance
 
@@ -1114,6 +1175,7 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
 - **Stat box text (S2, U1):** paging (C9c) counts the model's lines, not the lines the box draws, and a line longer than about 40 characters wraps. S2 showed that the box never cuts off or scrolls but shrinks its font, readable up to about 30 lines, so 15 lines per page leave room for wrapped lines; a page of many long provider lines can still become small. With vertical buttons, 10 fit with 16 lines of text; the ∞ glyph is missing, so C9d shows `--` ([S2 result](#s2-result)). Left open: the game without SkyUI, other resolutions and the gamepad's Y, which the user checks by hand in U1. If those differ, the ways out (a lower default, fewer buttons, short names only) are for the user to decide, since they change what ST-24 shows.
 - **Warning write-back (C10, K1):** the plugin writes its own INI while the game runs. Under a mod manager's virtual file system (Mod Organizer 2) the write can land in another folder than the user's copy (the overwrite folder), or fail; a user editing the INI at the same time can lose an edit or the dismissal. K1 checks the write under the test install's setup and logs the path written; a failure only brings the warning back at the next load (assumption 18). If a message box does not show over the main menu, the warning moves to the first game start or load, as ST-28 allows (K1).
 - **Escape in a message box (U1, K1):** if Escape or the gamepad's cancel button closes a box without calling the callback, or closes the skills menu behind it, the box flow of ST-21 and the warning may need `isCancellable` or `cancelButtonIndex` set; which behaviour is wanted is the user's decision (assumption 19).
+- **Damage split (S4, G7):** the split sits at one call inside `DoDamage`, which nothing in the test install patches ([S4 result](#s4-result)). A combat overhaul that replaces `DoDamage` or that call makes the scan fail and turns the redirection off; one that only redirects `ProcessHit`'s call still reaches it. No overhaul was tested, and a lethal split hit, a hit split to no Health damage and poison were not seen in game, so G7 checks them.
 - **Check hooks (S6b):** persuasion and intimidation in vanilla are dialogue conditions on Speech, not a formula. Replacing them may need condition-function hooks, or may not be possible without an ESP, which the "no ESP" constraint rules out.
 - **Magic crit (S5):** vanilla has no spell crits. Adding them may need a damage hook that overlaps with S4 and with combat overhauls.
 - **NPC actor-value persistence:** permanent modifiers on non-persistent NPCs reset when the actor respawns, but the ledger in the co-save does not. G2 and G3 must reconcile this, and OQ-1 may change how much NPC data exists at all.
