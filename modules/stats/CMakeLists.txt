@@ -75,10 +75,12 @@ endif()
 
 if(TOM_BUILD_PLUGIN)
     add_library(tom_stats_plugin SHARED
+        plugin/src/DeltaLog.cpp
         plugin/src/GameConfig.cpp
         plugin/src/LevelUpHook.cpp
         plugin/src/main.cpp
         plugin/src/Messaging.cpp
+        plugin/src/Serialization.cpp
         plugin/src/Service.cpp
     )
     set_target_properties(tom_stats_plugin PROPERTIES OUTPUT_NAME "trials-of-mastery-stats")
