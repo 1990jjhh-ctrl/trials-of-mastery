@@ -66,6 +66,7 @@ These are the user's answers to the decisions in the first draft of this plan.
     What the spike runs logged, for G1 to build the rule on (thread IDs are of one game session each):
 
     - [S4](#s4-result): the damage hooks of melee hits ran on worker threads (436 to 448), those of a Firebolt's ticks on the thread that received `kPostLoad` (380), fall damage on a worker (440); the hooks were installed on the `kDataLoaded` thread (584).
+    - [S5](#s5-result): the physical crit hooks ran on worker threads (428 to 440); the spell hook on workers and, for a fire hazard, on the `kPostLoad` thread (388), which also ran the effect ticks.
 16. **N and claims are session state (user decision, 2026-11-26):** as [§8](PRD.md#8-constraints) has it, a save stores `r` but neither N nor the claims of advancing (ST-6) and point assignment (ST-22). N comes from the INI each session, so a changed N applies to existing saves, and a claiming module (the mastery module) sets it again through the API. The claiming module also claims again each session. So C8 stores neither, and a revert keeps both, like crit shifts and XP modifiers.
 17. **Stat box display (from PRs #31 and #33, C3a, C3b, C9a, C9b, C9c):** ST-21 and ST-24 leave these details open. The ones marked *user decision* are the user's answers of 2026-11-26; the others are plan choices:
     - *User decision:* "as in the stats file" means the order in which the stats files of the merge (default, patches, mod patches, in merge order, each in its text order) first name a stat, with each stat's group taken from the merged table. A group set only by an API-registered entry is not a stats-file group. The shipped default is reordered so its groups come out as [§7.8](PRD.md#78-configuration) lists them: Warrior, Mage, Thief, Other.
@@ -830,6 +831,48 @@ Not covered:
 - **Combat overhauls:** none is installed. Hook 3 is inside 37335, so an overhaul that redirects the call at 38627+0x4A8 and still calls 37335 passes it; one that replaces 37335 or the call at +0x151 makes the scan fail.
 - **1.6.x:** untested; the sites come from scans, as in the S3 result.
 
+#### S5 result
+
+Run on 2026-11-28 on 1.7.104 with Experience, CSF 3.2.0, Beyond Mastery, SkyUI and skyrim-acrobatics-ng, through the skyrim-mcp bridge in `qasmoke`; no crash log. Bandits fought hagravens, and a bandit cast at the player, since the bridge's player cannot reach an NPC with an attack. **DEX can be added to the physical crit chance right after the game's crit perks, at one call in the crit step every hit goes through; spells can crit once per effect, by scaling its magnitude after the game's spell perks.** The prototype is `modules/stats/plugin/src/CritSpike.cpp` and `.h` on the branch `stats/s5-crit-spike` (0ea0807). That branch stays unmerged, as the reference for G8.
+
+How vanilla rolls a physical crit (disassembly of `SkyrimSE.exe` 1.7.104; Address Library IDs are AE):
+
+- Every `HitData` builder (44001 melee, 44002 projectiles, 44004) calls 44016 on the `HitData`. After Mod Attack Damage (0x23), Mod Incoming Damage (0x24) and the sneak attack multiplier, and unless the hit has `kIgnoreCritical`, 44016:
+  1. calls 26441 (attacker's actor-value owner, weapon, condition) at +0x28C for the base chance in percent: the attacker's `CriticalChance` actor value, times `(condition + 1) × fWeaponConditionCriticalChanceMult` (0.1) for a weapon that is not hand to hand, divided by the fire rate of an automatic weapon, times the weapon's CRDT % Mult if that is not negative. 26441 has no other caller;
+  2. runs the attacker's Calculate My Critical Hit Chance (0x01) at +0x2A6 and the target's Mod Enemy Critical Hit Chance (0x11) at +0x2CB on that chance. Bladesman, Deep Wounds and Critical Shot *set* it (10, 15, 20); the Blades' blessing adds 10;
+  3. rolls at +0x2EF: crit if the game's random number (68276) modulo 1000 is below the chance × 10, truncated. It sets `kCritical`;
+  4. on a crit, takes the crit damage (the weapon's CRDT damage, or `fCombatUnarmedCritDamageMult` of the damage unarmed), runs Calculate My Critical Hit Damage (0x02) at +0x40B, and adds the result to `totalDamage`; the crit effect is the weapon's CRDT spell;
+  5. then applies the kill-move and `AttackDamageMult` multipliers. Armor and blocking (44014) come later.
+- Spells have no crit. `ActiveEffect::AdjustForPerks` (vtable slot 0; 34053, shared by the value modifier effects, 34316 for the dual one) runs once when `MagicTarget`'s effect creation (34547) adds an effect with a caster: it applies Mod Spell Duration and Magnitude (0x1E, 0x1D) and Mod Incoming Spell Duration and Magnitude (0x2A, 0x29). `ModifyActorValue` (35086) then applies the magnitude, once for an instant effect and on every update for damage over time ([S4 result](#s4-result)).
+
+The prototype's hooks (a JSON file in `Data/SKSE/Plugins` sets the mode, the chances, the spell crit multiplier and whether NPC attackers count, and is read again when it changes):
+
+1. `base`, `perks`, `roll` and `crit damage`: the calls at 44016+0x28C (26441), +0x2CB (0x11 perk entry), +0x2EF (68276) and +0x40B (0x02 perk entry), each found by its unique register setup before the call; a stub passes the `HitData` (r15) to the first. `base` can replace or add to the base chance, `perks` can add after the perk entries (the mode G8 uses), `roll` logs the roll, `crit damage` the damage added.
+2. `adjust`: slot 0 of the vtables of `ValueModifierEffect` (206143), `AccumulatingValueModifierEffect` (205803), `PeakValueModifierEffect` (206014) and `DualValueModifierEffect` (205876), calling the previous function. After it, a detrimental Health damage effect with a caster rolls once, and on a crit its magnitude is multiplied.
+3. `tick`: the call of `DoDamage` at 35086+0x232, one roll per effect on its first tick, kept as a fallback for comparison.
+
+Evidence (plugin log):
+
+| Check | Result |
+| --- | --- |
+| Install log | All four 44016 sites, the four vtable slots and the tick site found, all vanilla. |
+| Vanilla chance, bandits and hagravens | `CriticalChance` 0 for every NPC, so the base chance is 0 % and no hit crits; condition 1. All five weapons used (Iron Sword, Iron War Axe, Steel War Axe, Steel Mace, unarmed) logged CRDT % Mult 1.00. |
+| Base chance replaced with 50 % (NPC attackers) | 90 crits in 186 rolls (48 %). A crit adds the weapon's crit damage, e.g. a Steel Mace: 5 → 5 after the 0x02 perk entry, `totalDamage` 16.50 → 21.50. |
+| Several computations per hit | Some hits ran 44016 two or three times within one millisecond, with the same attacker, target and damage (#90 and #91; #280 to #282), each with its own roll. |
+| Spells at `adjust`, 50 %, multiplier ×2 | A bandit's Firebolts on the player: three effects, one roll each (72.47, 46.05, 81.20); the crit took the magnitude from 25 to 50. Its Flames (a concentration spell): one effect, one roll (1.36), 8 → 16. |
+| Other Health damage effects | A fire hazard (spell 000153BD "Fire", casting source 3, the bandit as caster) also rolled at `adjust`. |
+| Threads | The 44016 hooks on worker threads 428 to 440; `adjust` on 428 to 440, and on 388 (the `kPostLoad` thread) for the hazard; the ticks on 388. |
+
+The `tick` fallback is not needed: `adjust` already rolls once per effect, and a damage-over-time effect deals its scaled magnitude in every tick.
+
+Not covered:
+
+- **The player as attacker:** keyboard attacks work through the bridge, but no NPC was in reach, so neither the player's hits nor the player's crit perks were rolled.
+- **Perks that set the chance:** `addperk` from the console works only on the player, so Bladesman and the others were not seen setting the chance; the disassembly shows that they overwrite it, which is why G8 adds after them.
+- **A weapon with a CRDT % Mult of 0:** every weapon used had 1.00. Vanilla multiplies the base chance by it, so such a weapon never crits in vanilla; a chance added after the perks is not multiplied.
+- **A concentration spell held by the player, Absorb and Dual effects, the value of the spell crit multiplier,** and combat overhauls (none installed).
+- **1.6.x:** untested; the sites come from scans.
+
 #### S7 result
 
 Run on 2026-11-27 and 2026-11-28 on 1.7.104 with Experience, CSF 3.2.0, Beyond Mastery, SkyUI and skyrim-acrobatics-ng (the CSF skill `acrobatics`, `useMult` 1, `useOffset` 0), through the skyrim-mcp bridge in `qasmoke`. **CSF reports its level-ups through its SKSE interface, vanilla `SkillIncrease::Event` fires above 100, and multiplying the XP right after CSF's own Mod Skill Use perk entry stacks multiplicatively with the perks, for uses only.** The prototype is `modules/stats/plugin/src/CsfSkillSpike.cpp` and `.h` on the branch `stats/s7-csf-skill-spike` (14658ec), with the trampoline raised from 28 to 56 bytes in `main.cpp` and a second `SKSE::Trampoline` of 0x100 bytes allocated near `CustomSkills.dll`. That branch stays unmerged, as the reference for G4 and G6.
@@ -1002,13 +1045,21 @@ Not covered:
 - **Covers:** ST-13.
 - **Notes:**
   - The default crit effects are absolute (C5a), so the chance follows the effective stat, not its distance to the default base.
-  - The S5 hook calls `critChance` (C7) inside the hit computation, records which thread it runs on and follows G1's thread rule for values needed at once (assumption 15). The crit shifts of other modules run on that thread too, which A1 documents.
+  - Physical crits, from the [S5 result](#s5-result): replaces the call of the target's Mod Enemy Critical Hit Chance (0x11) perk entry at 44016+0x2CB. The replacement calls the perk entry, then adds `critChance(attacker, Physical)` (C7, with the shifts of other modules) to the chance it was passed, so the base crit chance comes after the game's crit perks, which set the chance (ST-13, PR #55). The added chance is scaled by the weapon's crit multiplier as [ST-13](PRD.md#73-effects) defines: G8 multiplies it by the weapon's CRDT % Mult, read the way 26441 reads it (taken as is when not negative), so a weapon with a multiplier of 0 stays without crits. The game's own chance before it (`CriticalChance` × condition × CRDT % Mult, then the perks) stays as it is, and so do the roll and the crit damage. Every hit goes through 44016, melee and projectiles alike.
+  - The game rolls the chance in percent at a resolution of 0.1 % (modulo 1000 against chance × 10), and a single hit can run 44016 more than once, each time with its own roll (S5 result). G8 adds to every run, as vanilla's own chance does, and logs each.
+  - Spell crits, from the S5 result: replaces slot 0 (`AdjustForPerks`) of the vtables of `ValueModifierEffect` (206143), `AccumulatingValueModifierEffect` (205803), `PeakValueModifierEffect` (206014) and `DualValueModifierEffect` (205876), calling the previous function. After it, an effect that can crit by [ST-13](PRD.md#73-effects) rolls once against `critChance(caster, Magic)`, and on a crit its magnitude is multiplied by the spell crit multiplier from the stats file (ST-13; its default value is part of OQ-2, and its core part is planned with the other core changes of PR #55).
+  - Which effects roll: ST-13 limits spell crits to Health damage from cast spells and staves. So G8 tells them apart from what the prototype also rolled for (a fire hazard with casting source 3 in S5) and from weapon enchantments, poisons and traps, by the magic item's type (a spell, or the enchantment of a staff in the casting hand) and its casting source (left or right hand, not instant or other). G8 logs every effect it skips with its item type and casting source, and checks the rule in game before relying on it. A damage-over-time effect rolls once and deals the scaled magnitude in every tick; the per-tick fallback at 35086+0x232 is not used.
+  - Finds each site by its scan from the S5 result (exactly one match, vanilla target) and logs whose function each vtable slot held. If a site is not found, that part stays off for the session and the log says why, with no message box ([D9](#decisions-taken)).
+  - Both hooks need the chance inside the game's computation, on worker threads (428 to 440 in S5) and, for some effects, on the `kPostLoad` thread (388), so they follow G1's thread rule for values needed at once (assumption 15). The crit shifts of other modules run on those threads too, which A1 documents. The hooks log their thread.
   - `critChance` can be infinite or NaN (a curve or a shift from another module). G8 does not hand such a value to the game: it falls back to the base crit chance, or to no crit if that is not finite either, and logs it. Whether to also clamp to [0, 100 %] is for the user.
   - The crit chance's unit (fraction or percent, and how it maps to the game's crit value) is part of OQ-2. G8 does not pick it silently: it is raised with the user before G8 starts, and the placeholder curve's `TODO(OQ-2)` names it.
+  - Open technical points, not user decisions: the player as attacker and the crit perks setting the chance (not seen in S5), a concentration spell held by the player, Absorb and Dual effects, and the 1.6.x byte patterns.
 - **Verification:**
   - `in-game` plus `log`: the logged crit chance follows the curve, and over many hits the crit rate is close to it.
+  - `in-game` plus `log`, steps from the S5 run: NPC-versus-NPC hits (bandits and hagravens) roll the DEX chance after the perks; a Firebolt cast at the player rolls once per effect, and a crit scales its magnitude by the multiplier; a fire hazard does not roll.
   - `unit` or `log`: a shift returning NaN or infinity does not reach the game and is logged.
-- **Depends on:** S5, G1. The curve depends on OQ-2.
+  - Manual checks, run by the user by hand, since the bridge could not do them in S5: the player's own hits on an NPC crit at the logged rate; with Bladesman (or another crit perk) added through `player.addperk`, the chance is the perk's value plus the DEX chance; a held concentration spell (Flames) cast by the player rolls once per cast; an Absorb Health spell cast at the player is logged with whether it rolled; a weapon enchantment, a weapon poison and a trap never roll; a weapon whose CRDT % Mult is 0, if the test install has one, never crits.
+- **Depends on:** G1. S5 is done ([S5 result](#s5-result)). The curve and the spell crit multiplier's default depend on OQ-2.
 
 #### G9 Action training hooks
 
@@ -1177,7 +1228,7 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
 - **Escape in a message box (U1, K1):** if Escape or the gamepad's cancel button closes a box without calling the callback, or closes the skills menu behind it, the box flow of ST-21 and the warning may need `isCancellable` or `cancelButtonIndex` set; which behaviour is wanted is the user's decision (assumption 19).
 - **Damage split (S4, G7):** the split sits at one call inside `DoDamage`, which nothing in the test install patches ([S4 result](#s4-result)). A combat overhaul that replaces `DoDamage` or that call makes the scan fail and turns the redirection off; one that only redirects `ProcessHit`'s call still reaches it. No overhaul was tested, and a lethal split hit, a hit split to no Health damage and poison were not seen in game, so G7 checks them.
 - **Check hooks (S6b):** persuasion and intimidation in vanilla are dialogue conditions on Speech, not a formula. Replacing them may need condition-function hooks, or may not be possible without an ESP, which the "no ESP" constraint rules out.
-- **Magic crit (S5):** vanilla has no spell crits. Adding them may need a damage hook that overlaps with S4 and with combat overhauls.
+- **Magic crit (S5):** resolved: spell crits scale an effect's magnitude once, in `AdjustForPerks`, before any damage is dealt, so they do not overlap with the S4 split, which then splits the scaled damage ([S5 result](#s5-result)). What is left: G8 must tell cast spells and staves apart from hazards, enchantments and poisons (ST-13), and a combat overhaul that replaces 44016 or the vtable slots makes the scans fail; none was tested.
 - **NPC actor-value persistence:** permanent modifiers on non-persistent NPCs reset when the actor respawns, but the ledger in the co-save does not. G2 and G3 must reconcile this, and OQ-1 may change how much NPC data exists at all.
 - **Skill XP hook (S3, G6):** the hook sits inside the game's skill XP routine, at a call that Experience and CSF leave alone on 1.7.104. A plugin that patches that call, or a 1.6.x build with other bytes, makes the scan fail and turns the learning bonus off, with a log line only (*user decision, 2026-11-27:* no warning on screen) ([S3 result](#s3-result)). The same holds for the CSF site from S7.
 - **CSF (S7):** resolved for CSF 3.2.0: CSF reports level-ups through its interface (G4), and G6 has a site after its perk entry call ([S7 result](#s7-result)). What is left: G4's `Advance` caller hooks and G6's hook depend on 3.2.0's code and `Skill` layout, so a CSF update turns CSF skill training and the CSF learning bonus off, with a log line only, until the plugin learns the new build. CSF skills above 100 and a real CSF use are untested.
