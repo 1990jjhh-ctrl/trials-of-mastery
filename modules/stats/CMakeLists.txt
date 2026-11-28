@@ -71,6 +71,7 @@ endif()
 
 if(TOM_BUILD_PLUGIN)
     add_library(tom_stats_plugin SHARED
+        plugin/src/CheckSpike.cpp
         plugin/src/LevelUpHook.cpp
         plugin/src/main.cpp
         plugin/src/Messaging.cpp
