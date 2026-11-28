@@ -1,6 +1,7 @@
 // SKSE entry point of the Stats plugin.
 
 #include "Messaging.h"
+#include "PapyrusSpike.h"
 
 SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
@@ -14,6 +15,9 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	if (!tom::stats::registerMessageListener()) {
 		SKSE::log::critical("Could not register the SKSE message listener");
 		return false;
+	}
+	if (!tom::stats::registerPapyrusSpike()) {
+		SKSE::log::error("Could not register the Papyrus spike natives");
 	}
 	return true;
 }

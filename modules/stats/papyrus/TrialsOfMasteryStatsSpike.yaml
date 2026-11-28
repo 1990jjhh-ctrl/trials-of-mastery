@@ -1,0 +1,18 @@
+# Spike S8: console commands for ConsoleUtilSSE NG's custom commands, which
+# call the spike script's global functions. Install as
+# Data/SKSE/CustomConsole/TrialsOfMasteryStatsSpike.yaml.
+name: tomspike
+script: TrialsOfMasteryStatsSpike
+help: Trials of Mastery spike S8 (throwaway)
+subs:
+  - name: answer
+    func: SpikeAnswer
+    help: Call SpikeAnswer, which returns 42. [tomspike answer]
+  - name: log
+    func: SpikeLog
+    help: Write a line to the Stats plugin's log. [tomspike log hello]
+    args:
+      - name: msg
+        type: string
+        required: true
+        help: The text to log

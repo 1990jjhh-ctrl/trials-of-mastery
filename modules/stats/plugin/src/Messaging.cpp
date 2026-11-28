@@ -1,6 +1,7 @@
 #include "Messaging.h"
 
 #include "LevelUpHook.h"
+#include "PapyrusSpike.h"
 
 #include <cstdint>
 #include <string_view>
@@ -40,6 +41,10 @@ std::string_view messageName(std::uint32_t type)
 void onMessage(Messaging::Message* message)
 {
 	SKSE::log::info("SKSE message {} ({})", messageName(message->type), message->type);
+	if (message->type == Messaging::kPostLoadGame) {
+		callPapyrusSpike();
+		return;
+	}
 	if (message->type != Messaging::kDataLoaded) {
 		return;
 	}
