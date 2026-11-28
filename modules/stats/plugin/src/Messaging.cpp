@@ -42,6 +42,7 @@ std::string_view messageName(std::uint32_t type)
 void onDataLoaded()
 {
 	loadConfigurationAndService();
+	registerRaceChangeSinks();
 	registerLevelUpDiagnostics();
 	if (!installLevelUpHook()) {
 		SKSE::log::error("The vanilla LevelUp menu is not replaced");

@@ -14,4 +14,10 @@ void onNewGame();
 // by the difference (ST-3). Adds the player if the save held no stats for it,
 // e.g. a save made without the plugin.
 void onPostLoadGame();
+
+// Registers the sinks that follow race changes (ST-3, Stats plan, assumption
+// 11): the game's race switch event, for the player and every known actor,
+// and the closing of the race menu, for the player. Call once, at
+// kDataLoaded.
+void registerRaceChangeSinks();
 }

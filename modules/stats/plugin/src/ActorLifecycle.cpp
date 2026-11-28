@@ -8,6 +8,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace tom::stats
@@ -47,6 +48,68 @@ ActorRaces currentRaces(const std::vector<ActorId>& known, const RE::PlayerChara
 	}
 	return races;
 }
+
+// Sets the actor's race in the service, adding the player if it is not known
+// yet. An NPC the service does not know is left alone: its stats start when
+// something first needs them.
+void followRace(const RE::Actor& actor, std::string_view cause)
+{
+	const auto    race = raceOf(actor);
+	const ActorId id = actor.GetFormID();
+	SKSE::log::info("{}: actor {:08X} on thread {}", cause, id, REX::W32::GetCurrentThreadId());
+	if (!race) {
+		SKSE::log::warn("{}: actor {:08X} has a race without an editor ID; its stats keep the race they have", cause, id);
+		return;
+	}
+	const auto deltas = withService([&](StatsService& service) -> std::optional<std::vector<AvDelta>> {
+		if (id != service.player() && !service.hasActor(id)) {
+			return std::nullopt;
+		}
+		return ensureActor(service, id, *race);
+	});
+	if (!deltas || !*deltas) {
+		return;
+	}
+	SKSE::log::info("{}: actor {:08X} is of race {}", cause, id, *race);
+	logDeltas(cause, AvDeltasByActor{ { id, **deltas } });
+}
+
+// TESSwitchRaceCompleteEvent is what the game sends when an actor's race
+// switch is complete, the event behind Papyrus' OnRaceSwitchComplete: for
+// the console's setrace, a script's SetRace, vampirism and the werewolf and
+// vampire lord transformations. The race menu of character creation and of
+// showracemenu may change the player's race without it, so its closing
+// checks the player's race too; setting the same race again changes nothing.
+class RaceChanges final :
+    public RE::BSTEventSink<RE::TESSwitchRaceCompleteEvent>,
+    public RE::BSTEventSink<RE::MenuOpenCloseEvent>
+{
+public:
+	RE::BSEventNotifyControl ProcessEvent(const RE::TESSwitchRaceCompleteEvent* event,
+		RE::BSTEventSource<RE::TESSwitchRaceCompleteEvent>*) override
+	{
+		const auto* actor = event != nullptr && event->subject ? event->subject->As<RE::Actor>() : nullptr;
+		if (actor != nullptr) {
+			followRace(*actor, "race switch");
+		}
+		return RE::BSEventNotifyControl::kContinue;
+	}
+
+	RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* event,
+		RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override
+	{
+		if (event == nullptr || event->opening ||
+			std::string_view{ event->menuName.c_str() } != RE::RaceSexMenu::MENU_NAME) {
+			return RE::BSEventNotifyControl::kContinue;
+		}
+		if (const auto* player = RE::PlayerCharacter::GetSingleton()) {
+			followRace(*player, "race menu closed");
+		}
+		return RE::BSEventNotifyControl::kContinue;
+	}
+};
+
+RaceChanges g_raceChanges;
 }
 
 void onNewGame()
@@ -82,5 +145,11 @@ void onPostLoadGame()
 	}
 	SKSE::log::info("After the load: {} saved actors, races renewed for {}", known->size(), races.size());
 	logDeltas("after the load", *deltas);
+}
+
+void registerRaceChangeSinks()
+{
+	RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink<RE::TESSwitchRaceCompleteEvent>(&g_raceChanges);
+	RE::UI::GetSingleton()->AddEventSink<RE::MenuOpenCloseEvent>(&g_raceChanges);
 }
 }
