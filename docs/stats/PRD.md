@@ -130,6 +130,8 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, detection, sp
   - a check: a [curve](../PRD.md#41-curves) per stat and per skill, with the effective stat or the skill level as input, giving `I = Σ curve(x)` over all inputs. The module turns `I` into the game result of that action, such as the lockpicking sweet spot, the pickpocket chance or the barter price. The skill level keeps its own weight, so a high stat does not make a novice succeed at master-level checks;
   - training: which stats the action trains and a curve for the XP of each.
 
+  Actions that fire very often train per encounter, not per event. A hit counts once per cast, swing or shot and target, so a concentration spell or a staff that hits every fraction of a second counts once per cast and target. Damage taken trains by the amount of damage summed over time, not per damage event, since damage over time arrives in tiny ticks.
+
   Default training:
   - Using a weapon trains STR per swing: `XP = α · W^λ` (power curve) with `α ≈ 0.665` and `λ ≈ 0.589` (a fit to an iron dagger, W = 2, giving 1 XP and Stendarr's Hammer, W = 100, giving 10 XP). W is the weapon's weight. For bows and crossbows, `W = weight + damage`, and STR XP is given on drawing (crossbows: on loading).
   - Every hit trains DEX with a fixed amount, for all attacks including spells and ranged weapons.
