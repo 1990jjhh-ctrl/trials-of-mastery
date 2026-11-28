@@ -75,6 +75,7 @@ endif()
 
 if(TOM_BUILD_PLUGIN)
     add_library(tom_stats_plugin SHARED
+        plugin/src/ActorLifecycle.cpp
         plugin/src/DeltaLog.cpp
         plugin/src/GameConfig.cpp
         plugin/src/LevelUpHook.cpp
