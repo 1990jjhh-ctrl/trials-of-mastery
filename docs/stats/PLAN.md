@@ -55,13 +55,13 @@ These are the user's answers to the decisions in the first draft of this plan.
 6. **Numeric types:** base, point counts and modifiers are signed 32-bit integers. XP, cost, multiplier and effective stat are `double`.
 7. **Check-to-result mapping (OQ-5):** each check in the actions file gets an output mapping from `I` to the game quantity (sweet-spot size, pickpocket chance, price factor). The mapping is a curve with placeholder parameters.
 8. **Registered stats whose owner is missing at load:** their saved data is kept but dormant. It is not shown and has no effects, and it comes back when the owner registers again. The PRD does not cover this case.
-9. **Custom Skills Framework (CSF):** how the module learns about a CSF skill level-up, and where CSF computes skill XP, is not known (spike S7). Until then ST-16 is covered for vanilla skills, skills above 100 and level-ups reported through the API, and ST-12 for vanilla skills.
+9. **Custom Skills Framework (CSF):** settled for CSF 3.2.0 by the [S7 result](#s7-result): CSF announces its level-ups through its SKSE interface (G4), and its skill XP goes through its own `Skill::Advance`, where G6 multiplies it after CSF's Mod Skill Use perk entry. Other CSF versions are not covered; G4 and G6 log and skip what they do not recognize. A CSF skill's key in the skills file and for `trainSkillLevelUp` and `skillXpFactor` is its name from [§7.8](PRD.md#78-configuration) (*user decision, 2026-11-28*, PR #55); G4 and G6 build it in one helper. Which CSF level changes train is set by [ST-16](PRD.md#74-training-and-actions) (same decision); G4 follows it.
 10. **Game version (confirmed, [overview §4](../PRD.md#4-shared-constraints)):** 1.6.x and newer, tested on 1.7.104. T1.2 checks the Address Library and CommonLibSSE-NG support for 1.7.104.
 11. **Base adjustments ([ST-3](PRD.md#71-stats)):** an actor's stored base already contains its adjustments, and each adjustment is stored under its key. Setting a key changes the base by the difference to the key's old value; removing a key takes its value off the base. The race adjustment is one such key, owned by the module and not settable through the API. When the stats table's race adjustment for an actor's race differs from the stored one (a patch changed, or the actor changed race), the module sets the key again, so the base and with it the effects change by the difference (ST-3). A changed **default base** reaches existing actors the same way, as ST-3 and [§8](PRD.md#8-constraints) define: each actor stores the default base last applied per stat, and the module moves the base by the difference.
 12. **Effect reference ([ST-9, ST-10](PRD.md#73-effects)):** relative effects measure from the default base last applied to the actor's stat (`ActorStats::defaultBases`, C4), which is the stored form of "default base" for an existing actor. A stat with no default base applied counts it as 0, like any missing value in `ActorStats`; So C7 never gives a stat a non-zero base without `initStat`, and C8 restores the default base last applied together with every base.
 13. **Open: default-base patch at a multiplier other than 1.** ST-3 says a patch that changes a default base leaves relative effects unchanged, since base and default base move together. With `x = effective − default base` and `effective = (base + …) · multiplier + modifier`, a change `d` of both moves `x` by `d · (multiplier − 1)`, so this holds only at multiplier 1. The plan checks it at multiplier 1 only and does not settle the other case; it is for the user to decide in the PRD (ST-3, ST-8, MA-3).
 14. **Tables fixed at construction (constraint, from C7):** `StatsService` takes its `Tables` in the constructor and never changes them, and `registerStat` fails for a stat without a stats-table entry, since the default base comes from there (ST-3). So every table entry, the API-registered ones included (A1, the luck module's LUC per [LU-1](../luck/PRD.md)), is merged and passed to `buildTables` before the service is built; G1 builds it after that, then calls `registerStat` for each registered stat. `registerStat` on a built service only activates a stat whose entry is already in the tables; a stat whose entry arrives later cannot be added in that session.
-15. **Threads (to settle in G1, before the first hook task):** `StatsService` has no locking. Its copy-on-write crit shifts (C7) protect only against re-entry on one thread: a shift that sets or removes shifts while `critChance` runs. Two threads calling the service at once are a data race. G1 sets the rule for the whole plugin, which each hook task, A1 and A2 follow: which threads may call the service, and how a hook that runs on another thread reaches it (a deferred call through the SKSE task interface, `SKSE::GetTaskInterface()->AddTask`, a lock in the plugin around the service, or a value cached on the main thread). A hook that needs a value at once, inside the game's own computation (G6 skill XP factor, G7 split, G8 crit chance, G10 check), cannot be deferred, so the rule must cover it. The PRD says nothing on threads; nothing about it is visible to the player, so it is a design choice for G1, not an open PRD question.
+15. **Threads (to settle in G1, before the first hook task):** `StatsService` has no locking. Its copy-on-write crit shifts (C7) protect only against re-entry on one thread: a shift that sets or removes shifts while `critChance` runs. Two threads calling the service at once are a data race. G1 sets the rule for the whole plugin, which each hook task, A1 and A2 follow: which threads may call the service, and how a hook that runs on another thread reaches it (a deferred call through the SKSE task interface, `SKSE::GetTaskInterface()->AddTask`, a lock in the plugin around the service, or a value cached on the main thread). A hook that needs a value at once, inside the game's own computation (G6 skill XP factor, G7 split, G8 crit chance, G10 check), cannot be deferred, so the rule must cover it. The PRD says nothing on threads; nothing about it is visible to the player, so it is a design choice for G1, not an open PRD question. What the [S7 result](#s7-result) logged: the plugin installs on the thread of `kDataLoaded` (588 and 576 in two runs). Console commands from the skyrim-mcp bridge ran on other threads (440, 380), and the skill XP hooks and the vanilla `SkillIncrease::Event` ran on the thread of the command. A task queued with `SKSE::GetTaskInterface()->AddTask` ran on yet another thread (376), on which CSF's `Advance`, its perk entry and its `SkillIncreaseEvent` ran. So the hooks and sinks run on whatever thread triggers the skill XP, which need not be the install thread. Which thread is the game's main loop in a normal game, without the bridge, is not recorded.
 16. **N and claims are session state (user decision, 2026-11-26):** as [§8](PRD.md#8-constraints) has it, a save stores `r` but neither N nor the claims of advancing (ST-6) and point assignment (ST-22). N comes from the INI each session, so a changed N applies to existing saves, and a claiming module (the mastery module) sets it again through the API. The claiming module also claims again each session. So C8 stores neither, and a revert keeps both, like crit shifts and XP modifiers.
 17. **Stat box display (from PRs #31 and #33, C3a, C3b, C9a, C9b, C9c):** ST-21 and ST-24 leave these details open. The ones marked *user decision* are the user's answers of 2026-11-26; the others are plan choices:
     - *User decision:* "as in the stats file" means the order in which the stats files of the merge (default, patches, mod patches, in merge order, each in its text order) first name a stat, with each stat's group taken from the merged table. A group set only by an API-registered entry is not a stats-file group. The shipped default is reordered so its groups come out as [§7.8](PRD.md#78-configuration) lists them: Warrior, Mage, Thief, Other.
@@ -782,6 +782,59 @@ Not covered:
 - **The thread** the hooks run on was not recorded (assumption 15).
 - **1.6.x:** untested. The IDs are AE IDs and the sites come from the scans; whether the 1.6.x functions keep the same byte patterns is not checked.
 
+#### S7 result
+
+Run on 2026-11-27 and 2026-11-28 on 1.7.104 with Experience, CSF 3.2.0, Beyond Mastery, SkyUI and skyrim-acrobatics-ng (the CSF skill `acrobatics`, `useMult` 1, `useOffset` 0), through the skyrim-mcp bridge in `qasmoke`. **CSF reports its level-ups through its SKSE interface, vanilla `SkillIncrease::Event` fires above 100, and multiplying the XP right after CSF's own Mod Skill Use perk entry stacks multiplicatively with the perks, for uses only.** The prototype is `modules/stats/plugin/src/CsfSkillSpike.cpp` and `.h` on the branch `stats/s7-csf-skill-spike` (14658ec), with the trampoline raised from 28 to 56 bytes in `main.cpp` and a second `SKSE::Trampoline` of 0x100 bytes allocated near `CustomSkills.dll`. That branch stays unmerged, as the reference for G4 and G6.
+
+How CSF 3.2.0 levels its skills (its MIT source, tag v3.2.0, and a disassembly of `CustomSkills.dll` with its PDB; RVAs are of that build, Address Library IDs are AE):
+
+- **Interface:** at its `kDataLoaded`, CSF sends message type 0 from the sender `"CustomSkills"` to its SKSE listeners. The data is its interface, version 1 (0x28 bytes): `ShowStatsMenu`, `AdvanceSkill(id, magnitude)`, `IncrementSkill(id, count)` and `GetEventDispatcher(id)`. Dispatcher 0 is a `BSTEventSource<SkillIncreaseEvent>` whose event carries only `const char* skillID`, no level. The Papyrus side has `OnCustomSkillIncrease(string)` and `CustomSkills.AdvanceSkill`, `IncrementSkill(By)` and `GetSkillLevel`. CSF never sends the vanilla `SkillIncrease::Event`.
+- **A CSF skill** is not an engine skill. Its level and progress are two `TESGlobal`s, the level global being the `level` form of the skill's CSF JSON config (Beyond Mastery reads it from there). The `Skill` object holds its ID (an MSVC `std::string`) at +0, the level global at +0x40, the progress global at +0x48 and its info at +0x68.
+- **All CSF skill XP** goes through `CustomSkills::Skill::Advance(float magnitude, TESForm*, bool isSkillUse, bool hide)` at RVA 0x4CAE0, never through 40488 or 41561. So the S3 hook never sees CSF XP, and the CSF hook never sees vanilla XP. In `Advance`, in order:
+  1. for a use, XP = `magnitude × useMult + useOffset`, a call of `fmaf` at +0xB4 (Beyond Mastery patches it when `bScaleXPGainAbove100` is set);
+  2. +0xF8 to +0x143 set the player's `advanceSkill` to none;
+  3. `mov ecx, 0x16` at +0x156, then at +0x15B a 6-byte indirect call (`FF 15`) through CSF's own pointer to `BGSEntryPoint::HandleEntryPoint` (23526), entry point Mod Skill Use, on the address of the XP;
+  4. the level loop, with the level limit 100 hard-coded at +0x17B and +0x382 (`cmp esi, 100`), and the same in `Skill::Increment`. Beyond Mastery patches them for the skills it enables (`bEnable = true`; `acrobatics` in the test install).
+  5. If the level rose, one `SkillIncreaseEvent`, however many levels the call crossed. `Skill::Increment` calls `Advance` once per level.
+- **The perk entry site** is an indirect call, so the hook needs a trampoline within reach of `CustomSkills.dll`. CSF's `ReadSkillBook` calls through the same pointer (entry point 5), so the hook patches the call instruction, not the pointer. At +0x15B, r14 holds the `Skill*`. `isSkillUse` is in no register there, so a use is told from a grant by `Advance`'s callers. CSF 3.2.0 has five direct callers: 0x15394 (interface `AdvanceSkill`, a use), 0x30E41 (`UseWorkbench`, a use), 0x319F3 (`SkillUse::UseSkill`, CSF's vtable 0xF7 hook, a use), 0x4EC0A (Papyrus `AdvanceSkill`, a use) and 0x4D35B (`Skill::Increment`: trainers and books, `isSkillUse` false). CSF's `UseSkill` (`CustomSkills.dll`+0x319A0) handles only skill none with a `CustomSkillAdvance_<id>` keyword and chains everything else to vanilla 40488.
+- **Experience** has no CSF code. It caps vanilla skills only (18 + 2 × the character level) by redirecting 40488+0x25 and 41562+0x98.
+- **Layout:** the prototype reads CSF's `Skill` through the fixed 3.2.0 offsets and the MSVC `std::string` layout. Beyond Mastery also supports only CSF 3.2.0.
+
+The prototype's hooks and sinks:
+
+1. A `"CustomSkills"` listener, registered at `kPostLoad`, takes the interface and registers a sink on dispatcher 0. Vanilla `SkillIncrease::Event` and `TESTrackedStatsEvent` sinks sit next to it.
+2. `csf_perk_entry`: the call at `Advance`+0x15B, through a stub in the second trampoline that passes r14 as the `Skill`. It multiplies the XP after the call.
+3. `csf_advance_call`: the five direct calls of `Advance`, each marked use or grant by its caller. It sets the flag that hook 2 reads, and can scale the magnitude for comparison.
+4. The S3 `perk_entry` and `xp_routine_call` hooks, to compare both paths in one run.
+
+Evidence (plugin log, console; CSF commands through the CSF interface, run from the SKSE task queue):
+
+| Check | Result |
+| --- | --- |
+| Install log, both runs | CSF interface version 1 received; registered for CSF's `SkillIncreaseEvent`. `Advance` found at RVA 0x4CAE0 (as in 3.2.0). `csf_perk_entry` hooked at 0x4CAE0+0x15B with r14 as the `Skill`. Five `Advance` calls hooked (four uses, one in `Increment`). No `cmp esi, 100` left (Beyond Mastery patched both). Vtable slot 0xF7 holds `CustomSkills.dll`+0x319A0. Experience redirects 40488+0x25 and 41562+0x98 (to `Experience.dll`+0x56AA). No crash log. |
+| CSF `AdvanceSkill("acrobatics", 10)` | 10 XP, perk factor ×1.0. Level 0 to 3, with one CSF `SkillIncreaseEvent` for all three levels. |
+| + Well Rested (000FB984) | 11 XP (×1.10). |
+| + Warrior Stone (000E5F4C) | Still ×1.10: the stone's condition on the advanced skill does not match, since CSF sets `advanceSkill` to none. |
+| Factor ×2 at `csf_perk_entry` | 10 XP, 11 after the perks, 22 added. |
+| Factor ×2 at `csf_advance_call` | Magnitude 10 to 20, 22 after the perks. |
+| CSF `IncrementSkill("acrobatics", 1)` (whole level) | Logged as a grant; 1.067 XP, 1.174 after the perks (CSF runs the perk entry for grants too), the factor not applied. Level 5 to 6, one CSF event. |
+| CSF at the cap: `set SkyrimAcrobaticsLevel to 99`, then `AdvanceSkill` 90000 | Level 99 to 100, one CSF event. A second `AdvanceSkill` at 100: no level change, no event. |
+| Vanilla at 100: `player.setav onehanded 99`, `player.advskill onehanded 10000` | One `SkillIncrease::Event`, `TESTrackedStatsEvent` "Skill Increases" = 100. The base actor value went 99 to 100, while the prototype's read of the level in `PlayerSkills` stayed 25, so G4 reads the base actor value. |
+| Vanilla above 100: One-Handed's cap raised to 110 by Beyond Mastery's Legendary, Upgrade (one perk point, ten dragon souls), `advskill onehanded 10000` | One `SkillIncrease::Event` per level, base actor value 101, 102, 103, each with a `TESTrackedStatsEvent`. |
+| Experience cap: `player.setlevel 1`, `advskill onehanded 10` at 103 | The routine ran no perk entry and added no XP. |
+| Threads | Install on the `kDataLoaded` thread (588, 576); bridge console commands on 440 and 380; CSF interface commands from the task queue on 376 (assumption 15). |
+
+Both CSF hooks stack multiplicatively with the perks. `csf_advance_call` scales the magnitude before `useOffset` is added, so it is purely multiplicative only for a skill whose `useOffset` is 0, as `acrobatics`' is. `csf_perk_entry` scales the whole XP after the perks, as the S3 hook does, which is why G6 uses it.
+
+The bridge cannot open the console menu, so the prototype ran its commands when any menu closed (the TweenMenu, through Tab).
+
+Not covered:
+
+- **CSF skills above 100:** the test skill's CSF config has `"legendary": null`, so neither CSF nor Beyond Mastery offers Legendary or Upgrade for it.
+- **A real in-game CSF use:** skyrim-acrobatics-ng's DLL has no reference to `CustomSkills`, so its jumps probably bypass `Advance`; not verified.
+- **CSF versions other than 3.2.0** and **1.6.x**.
+- **A real vanilla skill use:** the bridge cannot cast or attack (as in the S3 result).
+
 ### Phase 4: Game layer (`modules/stats/plugin/`)
 
 #### G1 Configuration loading in game
@@ -820,9 +873,19 @@ Not covered:
 
 - **Goal:** turn skill level-ups into stat XP.
 - **Covers:** ST-14, ST-16, ST-17 (stat XP per skill).
-- **Interfaces:** a skill-increase event sink calling `StatsService::trainSkillLevelUp` (C7a). The CSF path follows the S7 result. The sink records which thread the event arrives on and follows G1's thread rule (assumption 15).
-- **Verification:** `in-game` plus `log`. `advskill` on One-Handed logs the split; a skill level above 100 trains; an unmapped skill gives nothing.
-- **Depends on:** G1, S7, C7a. The split depends on OQ-3.
+- **Interfaces:** two sinks calling `StatsService::trainSkillLevelUp` (C7a), from the [S7 result](#s7-result). Both record which thread the event arrives on and follow G1's thread rule (assumption 15).
+  - Vanilla skills: a `SkillIncrease::Event` sink. The event fires once per level, also above 100 with Beyond Mastery. The level reached is the skill's base actor value, not the level field of `PlayerSkills`, which the S7 run showed unchanged.
+  - CSF skills: a listener for the sender `"CustomSkills"`, registered at `kPostLoad`, takes CSF's interface (version 1; another version is logged and the CSF path stays off) and registers a sink on dispatcher 0, `SkillIncreaseEvent`. The event carries only the skill ID and is sent once per `Advance` call, which can cross several levels. ST-14 gives stat XP equal to each level reached, so the sink calls `trainSkillLevelUp` once for each level after the one the skill had before that `Advance` call, up to its level now.
+  - The level before comes from the `Advance` caller hooks, which G4 installs: the five direct calls of `Advance` in CSF 3.2.0 ([S7 result](#s7-result)), each replaced by a call that records the skill's level (its level global, `Skill`+0x40) and whether the caller is a use, then calls `Advance`. A level set without skill XP (console `set`, another mod writing the global) runs no `Advance`, so it is never counted, as [ST-16](PRD.md#74-training-and-actions) requires. A comparison of the levels before and after the call inside the caller hook, without the event, is an equivalent. A `SkillIncreaseEvent` outside a hooked call trains nothing and is logged.
+  - The caller hooks own the CSF version check that G6 reuses: `Advance` and its callers are found by scanning `CustomSkills.dll` and compared with the 3.2.0 RVAs, and the `Skill` offsets (ID at +0 as an MSVC `std::string`, level global at +0x40) are used only when they match. Anything else is logged and the CSF path stays off. They are written into the second trampoline near `CustomSkills.dll` (see G6), which G4 allocates.
+  - The CSF skill key comes from one helper, by [§7.8](PRD.md#78-configuration) (assumption 9). It needs the CSF config file that defines each skill; G4 finds where CSF reads those files.
+- **Verification:** `in-game` plus `log`:
+  - `advskill` on One-Handed logs the split; an unmapped skill gives nothing;
+  - One-Handed above 100 (Beyond Mastery's Legendary, Upgrade, as in the S7 run) trains once per level with the base actor value as the level;
+  - CSF `AdvanceSkill("acrobatics", 10)` from level 0 trains levels 1, 2 and 3 once each, with a mapping registered under `skyrimacrobatics:acrobatics`; `IncrementSkill` trains the level reached;
+  - `set SkyrimAcrobaticsLevel to 50` trains nothing, and the next `AdvanceSkill` that reaches 51 trains level 51 only;
+  - the install log names the CSF interface version, the dispatcher sink and the five `Advance` callers (four uses, one grant).
+- **Depends on:** G1, C7a. S7 is done ([S7 result](#s7-result)). The split depends on OQ-3.
 
 #### G5 Level-up handling
 
@@ -847,18 +910,22 @@ Not covered:
   - Applies the factor only inside a skill use: a thread-local flag set around the call at 40488+0x25, which calls the replaced call's current target, since Experience redirects it. A whole-level grant through 41562 runs 41561 without the flag and keeps its XP. An equivalent way to tell a use from a grant is fine, if `incpcs` stays unchanged.
   - Finds each site by its scan from the S3 result (exactly one match). If a site is not found, for example because another plugin patched it, nothing is patched and the log says why; the learning bonus is then off. *User decision (2026-11-27):* this is logged only, with no warning on screen. It chains with Experience and CSF as in the S3 result, and the trampoline grows by the two calls.
   - Needs the factor inside the game's XP computation, so it follows G1's thread rule for values needed at once (assumption 15). The hook logs the thread it runs on.
-  - CSF custom skills: *user decision (2026-11-27):* they get the learning bonus too (ST-12, "every skill"). Their XP goes through CSF's own `Skill::Advance`, not 41561, so G6 adds a second hook at the site S7 finds after CSF's Mod Skill Use perk entry call. It applies the same `(1 + learningBonus) × skillXpFactor(skill)` with the CSF skill's ID, for uses only, and finds and skips its site the same way.
-  - Open technical points, not user decisions: the thread the hooks run on (G1's rule, assumption 15), a skill at Experience's cap and Beyond Mastery above 100, and the 1.6.x byte patterns ([S3 result](#s3-result)).
+  - CSF custom skills: *user decision (2026-11-27):* they get the learning bonus too (ST-12, "every skill"). Their XP goes through CSF's own `Skill::Advance`, not 41561, so G6 adds a second hook from the [S7 result](#s7-result):
+    - Replaces the 6-byte indirect call at `Advance`+0x15B (Mod Skill Use, after `mov ecx, 0x16`) with a jump to a stub in a second trampoline allocated near `CustomSkills.dll` (0x100 bytes in the prototype), since the main one is out of reach of a 32-bit displacement there. The stub passes r14, the `Skill*`, to the replacement, which calls 23526 through CSF's pointer, then multiplies the XP by `(1 + learningBonus) × skillXpFactor(skill)` with the CSF skill's key (assumption 9). The hook patches the call, not CSF's pointer, which `ReadSkillBook` also uses.
+    - Applies the factor only for uses: G4's `Advance` caller hooks mark a call from a caller that passes `isSkillUse` true (interface and Papyrus `AdvanceSkill`, `UseWorkbench`, `SkillUse::UseSkill`), not one from `Skill::Increment`. An unknown caller of `Advance` is not hooked, so its XP gets no factor, and the log names it.
+    - Version check: G4's check, extended by the +0x15B site. If either fails, this hook is logged and skipped, as for the vanilla sites; the CSF learning bonus is then off.
+  - Open technical points, not user decisions: the thread the hooks run on (G1's rule, assumption 15; the S7 run saw the hooks on the thread of the command), a vanilla skill above 100 with Beyond Mastery, a CSF skill above 100, and the 1.6.x byte patterns ([S3 result](#s3-result), [S7 result](#s7-result)). At Experience's cap the vanilla routine runs no perk entry and adds no XP (S7), so the hook does nothing there.
 - **Verification:** `in-game` plus `log`, with One-Handed at 63 XP for `player.advskill onehanded 10` (S3 result):
   - the logged XP gain is 63 × the expected factor;
   - with the Warrior Stone and Well Rested, it is 63 × 1.32 × the factor; Alteration with both gives 33 × the factor (×1.10 from the perks, since the stone does not cover it);
   - with the stats at the curve limit, the stat factor is ×3 at most, and the perks still apply on top;
   - `player.incpcs onehanded` gives what the game gives (×1.32 with both perks), without the factor;
-  - the install log names both sites and the CSF site, with Experience, CSF and Beyond Mastery loaded;
-  - a use of a CSF skill gives CSF's XP × the factor, and a CSF skill's whole-level grant, if CSF has one, stays unchanged;
+  - the install log names both sites, the CSF site and the five `Advance` callers (four uses, one grant), with Experience, CSF 3.2.0 and Beyond Mastery loaded;
+  - CSF `AdvanceSkill("acrobatics", 10)` (`useMult` 1, `useOffset` 0) gives 10 × the factor; with Well Rested 11 × the factor; with the Warrior Stone added still 11 × the factor, since the stone does not cover CSF skills (S7 result);
+  - CSF `IncrementSkill("acrobatics", 1)` gives what CSF gives (×1.10 with Well Rested), without the factor;
   - a skill at Experience's cap and one above 100 with Beyond Mastery get the factor or stay capped as the game decides, without a crash;
   - a real skill use (a spell cast or a hit), checked by the user by hand if the bridge still cannot cast, gives the same factor as `advskill`.
-- **Depends on:** S3, S7 (CSF site), G1, C7a, and PR #52 (ST-12 limited to skill uses). The curve depends on OQ-4.
+- **Depends on:** G1 and C7a; G4 for the CSF part (its `Advance` caller hooks, version check and second trampoline). S3, S7 (CSF site) and PR #52 (ST-12 limited to skill uses) are done. The curve depends on OQ-4.
 
 #### G7 END damage redirection
 
@@ -1025,7 +1092,7 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
   - C1, C2 and C4 run in parallel. C9 runs in parallel with C8 and C7a; C8 and C7a share the service files, so they run one after the other, in either order.
   - The stat box amendments of PR #31: C9a only adds files and runs at any time. C3a runs in parallel with C8, C7a and C9a. C9b follows C3a, C9a and the merge of C8 (`stat_value.h`), and runs in parallel with C7a. C3b (PR #33) runs at any time. C9c follows C9b and C3b. C9d (S2) runs at any time once PR #41 is merged. U1 needs C9c and C9d, A1 needs C9b.
   - The compatibility warning (PR #43): C3c runs at any time; C10 follows C3c. Both must merge before K1, which also needs U1.
-  - G6, G7, G8, G9a to G9c and G10a to G10c run in parallel once their spike and G1 or G3 are done; G6 also waits for S7.
+  - G6, G7, G8, G9a to G9c and G10a to G10c run in parallel once their spike and G1 or G3 are done; S7, which G6 also waited for, is done. G6's CSF hook builds on G4's `Advance` caller hooks, so that part follows G4.
 
 ## Risks
 
@@ -1051,4 +1118,4 @@ Three tasks, all after S6b and C7a, each **parallel**. Each hook calls `StatsSer
 - **Magic crit (S5):** vanilla has no spell crits. Adding them may need a damage hook that overlaps with S4 and with combat overhauls.
 - **NPC actor-value persistence:** permanent modifiers on non-persistent NPCs reset when the actor respawns, but the ledger in the co-save does not. G2 and G3 must reconcile this, and OQ-1 may change how much NPC data exists at all.
 - **Skill XP hook (S3, G6):** the hook sits inside the game's skill XP routine, at a call that Experience and CSF leave alone on 1.7.104. A plugin that patches that call, or a 1.6.x build with other bytes, makes the scan fail and turns the learning bonus off, with a log line only (*user decision, 2026-11-27:* no warning on screen) ([S3 result](#s3-result)). The same holds for the CSF site from S7.
-- **CSF (S7):** if CSF exposes no level-up signal, ST-16 for CSF skills needs CSF users or a patch to report level-ups through the API. CSF skill XP also bypasses the vanilla G6 hook; if S7 finds no site after CSF's perk entry call, CSF skills get no learning bonus, which ST-12 requires (user decision, 2026-11-27), so that outcome goes back to the user.
+- **CSF (S7):** resolved for CSF 3.2.0: CSF reports level-ups through its interface (G4), and G6 has a site after its perk entry call ([S7 result](#s7-result)). What is left: G4's `Advance` caller hooks and G6's hook depend on 3.2.0's code and `Skill` layout, so a CSF update turns CSF skill training and the CSF learning bonus off, with a log line only, until the plugin learns the new build. CSF skills above 100 and a real CSF use are untested.
