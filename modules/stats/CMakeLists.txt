@@ -84,6 +84,14 @@ if(TOM_BUILD_PLUGIN)
         plugin/src/Serialization.cpp
         plugin/src/Service.cpp
     )
+    # A test build for the in-game checks (plugin/src/TestHooks.h); never on
+    # for a release.
+    option(TOM_STATS_TEST_HOOKS "Build the Stats plugin with the hooks of the in-game checks" OFF)
+    if(TOM_STATS_TEST_HOOKS)
+        target_sources(tom_stats_plugin PRIVATE plugin/src/TestHooks.cpp)
+    else()
+        target_sources(tom_stats_plugin PRIVATE plugin/src/NoTestHooks.cpp)
+    endif()
     set_target_properties(tom_stats_plugin PROPERTIES OUTPUT_NAME "trials-of-mastery-stats")
     target_precompile_headers(tom_stats_plugin PRIVATE plugin/src/PCH.h)
     target_link_libraries(tom_stats_plugin PRIVATE tom_stats_core CommonLibSSE::CommonLibSSE)

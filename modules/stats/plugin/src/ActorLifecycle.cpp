@@ -2,6 +2,7 @@
 
 #include "DeltaLog.h"
 #include "Service.h"
+#include "TestHooks.h"
 
 #include "tom/stats/core/actor_lifecycle.h"
 #include "tom/stats/core/stats_service.h"
@@ -72,6 +73,7 @@ void followRace(const RE::Actor& actor, std::string_view cause)
 	}
 	SKSE::log::info("{}: actor {:08X} is of race {}", cause, id, *race);
 	logDeltas(cause, AvDeltasByActor{ { id, **deltas } });
+	testLogPlayer(cause);
 }
 
 // TESSwitchRaceCompleteEvent is what the game sends when an actor's race
@@ -128,6 +130,7 @@ void onNewGame()
 	}
 	SKSE::log::info("New game: player {:08X} of race {}", id, *race);
 	logDeltas("new game", AvDeltasByActor{ { id, *deltas } });
+	testLogPlayer("new game");
 }
 
 void onPostLoadGame()
@@ -145,6 +148,7 @@ void onPostLoadGame()
 	}
 	SKSE::log::info("After the load: {} saved actors, races renewed for {}", known->size(), races.size());
 	logDeltas("after the load", *deltas);
+	testAfterLoad();
 }
 
 void registerRaceChangeSinks()
