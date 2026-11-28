@@ -3,6 +3,7 @@ find_package(SimpleIni CONFIG REQUIRED)
 
 # Game-independent formula and configuration core.
 add_library(tom_stats_core STATIC
+    core/src/actor_lifecycle.cpp
     core/src/actor_stats.cpp
     core/src/check.cpp
     core/src/config/configuration.cpp
@@ -36,6 +37,7 @@ if(TOM_BUILD_TESTS)
     include(Catch)
 
     add_executable(tom_stats_core_tests
+        tests/unit/actor_lifecycle_test.cpp
         tests/unit/actor_stats_test.cpp
         tests/unit/check_test.cpp
         tests/unit/configuration_test.cpp
