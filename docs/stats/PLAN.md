@@ -61,12 +61,13 @@ These are the user's answers to the decisions in the first draft of this plan.
 12. **Effect reference ([ST-9, ST-10](PRD.md#73-effects)):** relative effects measure from the default base last applied to the actor's stat (`ActorStats::defaultBases`, C4), which is the stored form of "default base" for an existing actor. A stat with no default base applied counts it as 0, like any missing value in `ActorStats`; So C7 never gives a stat a non-zero base without `initStat`, and C8 restores the default base last applied together with every base.
 13. **Open: default-base patch at a multiplier other than 1.** ST-3 says a patch that changes a default base leaves relative effects unchanged, since base and default base move together. With `x = effective − default base` and `effective = (base + …) · multiplier + modifier`, a change `d` of both moves `x` by `d · (multiplier − 1)`, so this holds only at multiplier 1. The plan checks it at multiplier 1 only and does not settle the other case; it is for the user to decide in the PRD (ST-3, ST-8, MA-3).
 14. **Tables fixed at construction (constraint, from C7):** `StatsService` takes its `Tables` in the constructor and never changes them, and `registerStat` fails for a stat without a stats-table entry, since the default base comes from there (ST-3). So every table entry, the API-registered ones included (A1, the luck module's LUC per [LU-1](../luck/PRD.md)), is merged and passed to `buildTables` before the service is built; G1 builds it after that, then calls `registerStat` for each registered stat. `registerStat` on a built service only activates a stat whose entry is already in the tables; a stat whose entry arrives later cannot be added in that session.
-15. **Threads (to settle in G1, before the first hook task):** `StatsService` has no locking. Its copy-on-write crit shifts (C7) protect only against re-entry on one thread: a shift that sets or removes shifts while `critChance` runs. Two threads calling the service at once are a data race. G1 sets the rule for the whole plugin, which each hook task, A1 and A2 follow: which threads may call the service, and how a hook that runs on another thread reaches it (a deferred call through the SKSE task interface, `SKSE::GetTaskInterface()->AddTask`, a lock in the plugin around the service, or a value cached on the main thread). A hook that needs a value at once, inside the game's own computation (G6 skill XP factor, G7 split, G8 crit chance, G10 check), cannot be deferred, so the rule must cover it. The PRD says nothing on threads; nothing about it is visible to the player, so it is a design choice for G1, not an open PRD question. What the [S7 result](#s7-result) logged: the plugin installs on the thread of `kDataLoaded` (588 and 576 in two runs). Console commands from the skyrim-mcp bridge ran on other threads (440, 380), and the skill XP hooks and the vanilla `SkillIncrease::Event` ran on the thread of the command. A task queued with `SKSE::GetTaskInterface()->AddTask` ran on yet another thread (376), on which CSF's `Advance`, its perk entry and its `SkillIncreaseEvent` ran. So the hooks and sinks run on whatever thread triggers the skill XP, which need not be the install thread. Which thread is the game's main loop in a normal game, without the bridge, is not recorded.
+15. **Threads (to settle in G1, before the first hook task):** `StatsService` has no locking. Its copy-on-write crit shifts (C7) protect only against re-entry on one thread: a shift that sets or removes shifts while `critChance` runs. Two threads calling the service at once are a data race. G1 sets the rule for the whole plugin, which each hook task, A1 and A2 follow: which threads may call the service, and how a hook that runs on another thread reaches it (a deferred call through the SKSE task interface, `SKSE::GetTaskInterface()->AddTask`, a lock in the plugin around the service, or a value cached on the main thread). A hook that needs a value at once, inside the game's own computation (G6 skill XP factor, G7 split, G8 crit chance, G10 check), cannot be deferred, so the rule must cover it. The PRD says nothing on threads; nothing about it is visible to the player, so it is a design choice for G1, not an open PRD question. What the [S7 result](#s7-result) logged: the plugin installs on the thread of `kDataLoaded` (588 and 576 in two runs). Console commands from the skyrim-mcp bridge ran on other threads (440, 380), and the skill XP hooks and the vanilla `SkillIncrease::Event` ran on the thread of the command. A task queued with `SKSE::GetTaskInterface()->AddTask` ran on yet another thread (376), on which CSF's `Advance`, its perk entry and its `SkillIncreaseEvent` ran. So the hooks and sinks run on whatever thread triggers the skill XP, which need not be the install thread.
 
     What the spike runs logged, for G1 to build the rule on (thread IDs are of one game session each):
 
     - [S4](#s4-result): the damage hooks of melee hits ran on worker threads (436 to 448), those of a Firebolt's ticks on the thread that received `kPostLoad` (380), fall damage on a worker (440); the hooks were installed on the `kDataLoaded` thread (584).
     - [S5](#s5-result): the physical crit hooks ran on worker threads (428 to 440); the spell hook on workers and, for a fire hazard, on the `kPostLoad` thread (388), which also ran the effect ticks.
+    - [S6a](#s6a-result): `PlayerCharacter::Update` and `HandleHealthDamage` ran on the thread that received `kPostLoad` (376), as the effect ticks did in S4 and S5; the SKSE messages `kPostLoad`, `kInputLoaded`, `kPreLoadGame` and `kPostLoadGame` arrive there too (all runs), and so did a task queued with `AddTask` in the S7 run. So that thread is the game's main loop; `kDataLoaded` arrives on another one (576 or 584), which the prototypes' logs call "main" by mistake. Animation events, hits, topic info and the resistance check ran on workers (428 to 440).
 16. **N and claims are session state (user decision, 2026-11-26):** as [§8](PRD.md#8-constraints) has it, a save stores `r` but neither N nor the claims of advancing (ST-6) and point assignment (ST-22). N comes from the INI each session, so a changed N applies to existing saves, and a claiming module (the mastery module) sets it again through the API. The claiming module also claims again each session. So C8 stores neither, and a revert keeps both, like crit shifts and XP modifiers.
 17. **Stat box display (from PRs #31 and #33, C3a, C3b, C9a, C9b, C9c):** ST-21 and ST-24 leave these details open. The ones marked *user decision* are the user's answers of 2026-11-26; the others are plan choices:
     - *User decision:* "as in the stats file" means the order in which the stats files of the merge (default, patches, mod patches, in merge order, each in its text order) first name a stat, with each stat's group taken from the merged table. A group set only by an API-registered entry is not a stats-file group. The shipped default is reordered so its groups come out as [§7.8](PRD.md#78-configuration) lists them: Warrior, Mage, Thief, Other.
@@ -873,6 +874,58 @@ Not covered:
 - **A concentration spell held by the player, Absorb and Dual effects, the value of the spell crit multiplier,** and combat overhauls (none installed).
 - **1.6.x:** untested; the sites come from scans.
 
+#### S6a result
+
+Run on 2026-11-28 on 1.7.104 with Experience, CSF 3.2.0, Beyond Mastery, SkyUI and skyrim-acrobatics-ng, through the skyrim-mcp bridge in `qasmoke`, with a staged control map that puts the right and left attack on G and H; no crash log. **Most combat and body actions have a hook that fires once per action with the data the training needs; hits and damage taken fire far more often than once per action, and the social actions were not reached.** The prototype is `modules/stats/plugin/src/TrainingSpike.cpp` and `.h` on the branch `stats/s6a-training-spike` (261b4f4). It patches no code: three vtable slots and event sinks only. That branch stays unmerged, as the reference for G9a to G9c.
+
+Where the actions show up (disassembly of `SkyrimSE.exe` 1.7.104; Address Library IDs are AE):
+
+- Combat (G9a):
+  - Swing: the player's animation graph events `weaponSwing` (right hand) and `weaponLeftSwing` (left hand), through slot 1 of the `PlayerCharacter` vtable of its `BSTEventSink<BSAnimationGraphEvent>` (208044; vanilla `TESObjectREFR::ProcessEvent`, 37997). The names are those of the character behavior files.
+  - Bow draw: `bowDrawStart` and `bowDrawn`; `BowRelease` and `arrowRelease` on release. Crossbow load: `reloadStart` and `reloadStop`.
+  - Hit: `TESHitEvent` with the player as cause; spells and projectiles come with the spell or weapon as source.
+  - Staff use: `TESSpellCastEvent` with a staff enchantment, and the animation events `MLh_SpellFire_Event` and `MRh_SpellFire_Event` with a staff in that hand.
+  - Unarmed: a swing or hit without a weapon; the gloves are the armor in the hands slot.
+  - Fighting: a once-a-second tick in `PlayerCharacter::Update` (slot 0xAD of 208040, 40447) while the player is in combat; `TESCombatEvent` for context.
+  - Spell cast: `TESSpellCastEvent` with the player as caster.
+- Body (G9b):
+  - Damage taken: `PlayerCharacter::HandleHealthDamage` (slot 0x104 of 208040, 38606), which 38468 calls after Health dropped ([S4 result](#s4-result)).
+  - Disease recovery: a disease leaving the player's added spells, polled in the `Update` tick; cure effects through `TESMagicEffectApplyEvent`.
+  - Poison resistance: `Actor::CheckResistance` (slot 0xA of the player's `MagicTarget` vtable 208048, 38737). It returns the factor left after `PoisonResist` (actor value 40) for a poison, `ResistMagic` (44) otherwise, times the effect's own resist actor value; 1 means nothing was resisted. The prototype counts an effect as poison when its item is a poison (`SpellType::kPoison`) or the effect's resist actor value is `PoisonResist`.
+  - Sprinting with Stamina use and overencumbered walking: the `Update` tick.
+- Social (G9c):
+  - Trade: `TESContainerChangedEvent` moving gold (form 0xF) to or from the player while the barter menu is open.
+  - Persuasion, intimidation, bribe: `TESTrackedStatsEvent` "Persuasions", "Intimidations" and "Bribes", which the vanilla `FavorDialogueScript` sends through `Game.IncrementStat`; the target is the dialogue speaker `MenuTopicManager` holds.
+  - Normal interactions: `TESTopicInfoEvent` while the dialogue menu is open, with `MenuOpenCloseEvent` for the dialogue and barter menus.
+
+The prototype logs, per action, the stat XP the shipped default training (`modules/stats/data/actions/_default.json`) would give.
+
+Evidence (plugin log):
+
+| Action | Result |
+| --- | --- |
+| Install log | The three vtable slots (208044 slot 1, 208040 slots 0xAD and 0x104, 208048 slot 0xA) held the vanilla functions; all sinks registered. |
+| Swing (Iron Dagger, key G) | One `weaponSwing` per swing, W = 2 → STR 1.000, as ST-15's example. |
+| Bow draw (Hunting Bow) | W = 7 + 7 = 14 → STR 3.147. `bowDrawStart` fired twice for one draw (16 ms apart), `bowDrawn` once; `BowRelease` and `arrowRelease` once each. |
+| Staff (Staff of Flames) | `TESSpellCastEvent` with the staff's enchantment and `MRh_SpellFire_Event` at the same moment: W = 8 → INT 2.263. |
+| Hit | `TESHitEvent` fired for an arrow, the staff and dagger hits on a forge (furniture) and a static, so it needs a filter to actors. The concentration staff sent a hit about every 0.17 s (7 in 1.1 s) for one use. |
+| Fighting | Begin and end lines followed the combat state; one tick per second in combat (PER 0.10 each). |
+| Damage taken (a hagraven's spells) | 365 calls of `HandleHealthDamage`, from 40 per Fireball hit down to ticks of 5.4e-06. |
+| Disease (the hagraven's Rockjoint) | Logged when contracted and when it left the added spells 2 s later (removed in the run): CON 2.00, END 2.00. |
+| Overencumbered walking | One tick per second while moving overencumbered (STR 0.10 each), with the distance moved. |
+| Resistance check | `CheckResistance` ran for every effect with its resist actor value (FireResist for Fireball and Firebolt, none for the disease); no poison reached the player. |
+| Topic info | Fired outside dialogue for the player's combat barks (topics "Hit", "Attack") and a hagraven's death line, all with the dialogue menu closed. |
+| Threads | Animation events, hits, topic info and the resistance check on worker threads 428 to 440; the `Update` tick and `HandleHealthDamage` on 376, the thread of `kPostLoad`; install on 576 (`kDataLoaded`). |
+
+Not covered:
+
+- **Sprinting:** the bridge's Alt chord did not sprint.
+- **Poison resistance:** the spider did not engage, so no poison reached the player.
+- **Crossbow load, unarmed hits with gloves, a hit on an actor:** not tried or not reached.
+- **A spell cast by key:** only the staff's cast was logged through `TESSpellCastEvent`; a player spell was not confirmed separately.
+- **The social actions:** the bridge cannot target NPCs, so trade, persuasion, intimidation, bribes and normal interactions inside dialogue were not reached.
+- **1.6.x:** untested; nothing is patched, but the vtable IDs and event names are not checked there.
+
 #### S7 result
 
 Run on 2026-11-27 and 2026-11-28 on 1.7.104 with Experience, CSF 3.2.0, Beyond Mastery, SkyUI and skyrim-acrobatics-ng (the CSF skill `acrobatics`, `useMult` 1, `useOffset` 0), through the skyrim-mcp bridge in `qasmoke`. **CSF reports its level-ups through its SKSE interface, vanilla `SkillIncrease::Event` fires above 100, and multiplying the XP right after CSF's own Mod Skill Use perk entry stacks multiplicatively with the perks, for uses only.** The prototype is `modules/stats/plugin/src/CsfSkillSpike.cpp` and `.h` on the branch `stats/s7-csf-skill-spike` (14658ec), with the trampoline raised from 28 to 56 bytes in `main.cpp` and a second `SKSE::Trampoline` of 0x100 bytes allocated near `CustomSkills.dll`. That branch stays unmerged, as the reference for G4 and G6.
@@ -1025,7 +1078,7 @@ Not covered:
 - **Interfaces:** the hooks of the [S4 result](#s4-result), with the user decisions of PR #55 (ST-11):
   - Replaces the call of 38468 at 37335+0x151 (`DoDamage`'s Health change, after the difficulty multiplier) and splits there, so the share is taken from what the actor would take. Every call is split on its own, so damage over time is split per tick.
   - Tells the kind apart as the prototype does: a thread-local mark set around the call of 37335 at 38586+0x4A7 (physical, with the `HitData`) and at 35086+0x232 (magic, with the effect), cleared after the call. A `DoDamage` call without a mark (fall damage 37998+0xC7, drowning 37348, any other caller) is not redirected (ST-11: damage with no type).
-  - Poison is not redirected (ST-11): a magic mark whose effect the game resists with Resist Poison counts as no mark. The test is the one `Actor::CheckResistance` (38737) applies (found in spike S6a): the magic item is a poison (`SpellType::kPoison`), or the effect's resist actor value is `PoisonResist`. G7 checks both cases in game (a weapon poison and a creature poison) before relying on the test.
+  - Poison is not redirected (ST-11): a magic mark whose effect the game resists with Resist Poison counts as no mark. The test is the one `Actor::CheckResistance` (38737) applies ([S6a result](#s6a-result)): the magic item is a poison (`SpellType::kPoison`), or the effect's resist actor value is `PoisonResist`. G7 checks both cases in game (a weapon poison and a creature poison) before relying on the test.
   - The split: `taken = min(share × damage, pool)`, taken off Stamina (physical) or Magicka (magic) with `DamageActorValue`, and `damage − taken` passed on to Health. The share is `damageRedirectionShare` (C7) of the damaged actor; G7 splits for every actor the service has stats for, as G3 applies effects, where the prototype split only the player.
   - Finds each site by its scan from the S4 result (exactly one match), and checks that the call goes to the vanilla target. If a site is not found, nothing is patched, the log says why, and the redirection is off for the session, with no message box ([D9](#decisions-taken)).
   - Needs the share inside the game's damage computation, on the thread of the hit (workers 436 to 448 in S4) or of the effect update (380, the `kPostLoad` thread), so it follows G1's thread rule for values needed at once (assumption 15). The hook logs its thread.
@@ -1063,16 +1116,33 @@ Not covered:
 
 #### G9 Action training hooks
 
-These are three tasks with no shared files, all after S6a and G1, each **parallel** with the others. A fourth task, G9d, is not a hook.
+These are three tasks with no shared files, all after G1, each **parallel** with the others. A fourth task, G9d, is not a hook. The hooks are those of the [S6a result](#s6a-result); actions that fire very often train per encounter (ST-15, PR #55).
 
 - **G9a Combat:** swing, bow draw, crossbow load, hit, staves, unarmed and gloves, fighting, spell cast.
+  - Swing: `weaponSwing` and `weaponLeftSwing` through slot 1 of vtable 208044, with the weapon in that hand; W is its weight.
+  - Bow draw: `bowDrawn`, which fired once per draw in S6a, where `bowDrawStart` fired twice; W is the bow's weight plus its damage. Crossbow load: `reloadStop` (or `reloadStart`, whichever fires once per load; not seen in S6a).
+  - Hit: `TESHitEvent` with the player as cause and an actor as target (S6a saw it for furniture and statics). A hit counts once per swing, shot or cast and target (ST-15, PR #55): G9a keeps the targets already hit since the swing, release or cast that started the attack, so a concentration spell or staff that hits every 0.17 s counts once per cast and target. How a hit is matched to its swing, shot or cast (the source, the hand, a projectile in flight while the next is drawn) is an open technical point for G9a.
+  - Staff use: `TESSpellCastEvent` with a staff enchantment; W is the staff's weight. `MRh_SpellFire_Event` and `MLh_SpellFire_Event` fire at the same moment and are not used, so a use counts once.
+  - Unarmed: a swing without a weapon; the gloves are the armor in the hands slot (OQ-9).
+  - Fighting: the 1 s tick in `PlayerCharacter::Update` (slot 0xAD of 208040) while the player is in combat (OQ-10).
+  - Spell cast: `TESSpellCastEvent` with the player as caster and a spell, not a staff enchantment.
 - **G9b Body:** damage taken, disease recovery, poison resistance, sprinting with stamina use, overencumbered walking.
+  - Damage taken: `HandleHealthDamage` (slot 0x104 of 208040), after Health changed. It trains by the damage summed over time (ST-15, PR #55), since S6a saw ticks from 40 down to 5.4e-06: G9b sums the damage and calls `applyTraining("DamageTaken", sum)` once per `Update` tick, so the action's curve takes the amount. The shipped placeholder (a fixed XP per call) becomes an amount curve, still marked `TODO(OQ-7)`.
+  - Disease recovery: a disease leaving the player's added spells, polled in the `Update` tick.
+  - Poison resistance: `CheckResistance` (slot 0xA of 208048) for a poison as G7 tells it apart (its item is a poison, or its effect's resist actor value is `PoisonResist`), when the factor is below 1.
+  - Sprinting with Stamina use and overencumbered walking: the `Update` tick, with the distance moved; a jump above a set distance in one frame is a teleport and does not count.
 - **G9c Social:** trade by money value, persuasion and intimidation by target, normal interactions.
+  - Trade: `TESContainerChangedEvent` moving gold (form 0xF) to or from the player while the barter menu is open; M is the gold moved.
+  - Persuasion and intimidation: `TESTrackedStatsEvent` "Persuasions" and "Intimidations" (and "Bribes", which ST-15 does not list and G9c only logs), with the dialogue speaker as the target.
+  - Normal interactions: `TESTopicInfoEvent` only while the dialogue menu is open and with an NPC as the speaker, since it also fires for combat barks and death lines outside dialogue (S6a). What counts as one interaction (one line, one topic, one conversation) is an open technical point for G9c, not seen in S6a.
 - **G9d Mod actions:** the shared `applyTraining` entry for API-registered actions (ST-16). It needs no hook. A1 wires it up.
 - **Covers:** ST-15 (training), ST-16, ST-17 (stat XP per action).
-- **Interfaces:** every action calls `StatsService::applyTraining` (C7a). Each hook records which thread it runs on and follows G1's thread rule (assumption 15).
-- **Verification:** `in-game` plus `log`. Each action logs its XP, and the ST-15 example values (dagger, Stendarr's Hammer, 100 septims) come out.
-- **Depends on:** C7a. XP amounts depend on OQ-7; G9a's unarmed STR XP by glove weight depends on OQ-9 and its fighting PER XP on OQ-10.
+- **Interfaces:** every action calls `StatsService::applyTraining` (C7a). Each hook records which thread it runs on and follows G1's thread rule (assumption 15): in S6a the animation events, hits and topic info came on worker threads (428 to 440), the `Update` tick and `HandleHealthDamage` on the `kPostLoad` thread (376). Training needs no value at once, so a hook off that thread can defer its call. A hook that cannot be installed (a vtable slot or sink that fails) is logged, and its action trains nothing for the session, with no message box ([D9](#decisions-taken)). G9a and G9b share the `Update` hook of 208040 slot 0xAD; the first of them to merge adds it with a way for the other to subscribe, so the slot is replaced once.
+- **Verification:** `in-game` plus `log`. Each action logs its XP, and the ST-15 example values (dagger, Stendarr's Hammer, 100 septims) come out. Per task:
+  - G9a: a dagger swing gives STR 1.000 per swing (S6a); a Hunting Bow gives STR 3.147 once per draw; the Staff of Flames gives INT 2.263 per use; hitting a forge or a wall gives no DEX; a concentration staff held on one NPC gives one hit's DEX per use; fighting ticks once per second in combat. Manual checks, run by the user by hand: a crossbow load, an unarmed hit with and without gloves, a hit on an NPC with a weapon and an arrow, a player spell cast by key, and one hit on two NPCs with one swing (two hits, once each).
+  - G9b: a hagraven's spells train by the summed damage, not per tick; a disease gives its XP when it leaves; overencumbered walking trains per second while moving and not while standing or after `coc`. Manual checks, run by the user by hand: sprinting trains only while it uses Stamina; a resisted poison (a frostbite spider, with some `PoisonResist`) trains, and an unresisted one does not.
+  - G9c: all checks are manual, run by the user by hand, since the bridge cannot target NPCs: buying and selling for 100 septims gives CHA 1 and 1000 septims about 3; a successful persuasion and intimidation train CHA by target; a dialogue line with an NPC trains once per interaction, and combat barks do not.
+- **Depends on:** C7a, G1. S6a is done ([S6a result](#s6a-result)). XP amounts depend on OQ-7; G9a's unarmed STR XP by glove weight depends on OQ-9 and its fighting PER XP on OQ-10.
 
 #### G10 Action checks
 
