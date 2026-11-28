@@ -145,7 +145,7 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, speech, intim
   - Trading trains CHA: `XP = 0.1 · M^0.5` (power curve, `α = 0.1`, `λ = 0.5`), with M the money value of the transaction: 100 septims give 1 XP, 1000 septims about 3 XP, 10 000 septims 10 XP. Persuading and intimidating train CHA, with the amount depending on the target; intimidating does not train STR. Normal interactions give 1 XP.
 
   Default checks: lockpicking (Lockpicking, DEX), pickpocket (Pickpocket, DEX), sneak (Sneak, DEX), persuasion and barter (Speech, CHA), intimidation (Speech, CHA, STR). Once the actions file exists, it holds the values and this list only describes them.
-- ST-16: Skills from other mods, including Custom Skills Framework skills, train stats only when a mapping is registered for them. Skill levels above 100 (Beyond Mastery, Experience) keep training stats with the same rule. Other mods can add actions: a mod registers the action through the API, hooks the game event itself, and asks the module for the check value and to apply the action's training. Patches can then tune the action like any other.
+- ST-16: Skills from other mods, including Custom Skills Framework skills, train stats only when a mapping is registered for them, under the skill's namespaced name ([§7.8](#78-configuration)). Skill levels above 100 (Beyond Mastery, Experience) keep training stats with the same rule. Other mods can add actions: a mod registers the action through the API, hooks the game event itself, and asks the module for the check value and to apply the action's training. Patches can then tune the action like any other.
 - ST-17: Other modules can register XP modifiers through the API: per skill for skill XP and for the stat XP a skill gives on level-up (ST-14), and per action for the stat XP the action gives (ST-15). A modifier below −100 % is rejected, so a modifier never takes XP below 0. The professions module uses this for its class modifiers.
 
 ### 7.5 Level-up
@@ -202,7 +202,7 @@ What stats do in skill activities (sneak, pickpocket, lockpicking, speech, intim
 
 Default stat groups, named after the guardian stones: Warrior (STR, CON, END), Mage (INT, WIS), Thief (DEX, PER), Other (CHA). A registered stat that names no group belongs to its namespace's group (ST-21).
 
-Once the JSON files exist, they hold the values and this section only describes them. Names of stats, skills and actions added by other mods are namespaced (`<Mod>:<Name>`).
+Once the JSON files exist, they hold the values and this section only describes them. Names of stats, skills and actions added by other mods are namespaced (`<Mod>:<Name>`). A Custom Skills Framework skill is named `<file>:<skill ID>`, with `<file>` the name of its CSF config file without the extension, which is unique per mod: `skyrimacrobatics:acrobatics`.
 
 ### 7.9 Compatibility
 
